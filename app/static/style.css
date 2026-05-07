@@ -47,7 +47,7 @@ body {
 }
 
 .header h1 {
-    width: 24px; height: 18px;
+    font-size: 1.6rem;
     color: var(--gold);
     font-weight: 800;
     letter-spacing: 0.03em;
