@@ -62,7 +62,7 @@
                 {% for match in group_matches %}
                 {% if match.group == group_letter %}
                 <div class="match-row">
-                    <div class="match-home"><span class="flag-icon">{{ flags.get(match.home, '') }}</span> {{ match.home }}</div>
+                    <div class="match-home"><img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.home, '') }}.png" alt=""> {{ match.home }}</div>
                     <div class="match-bet">
                         <button class="bet-btn {% if bet_data.get('matches', {}).get(match.id) == '1' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="1" data-group="{{ group_letter }}"
@@ -74,7 +74,7 @@
                                 data-match="{{ match.id }}" data-value="2" data-group="{{ group_letter }}"
                                 {% if is_submitted %}disabled{% endif %}>2</button>
                     </div>
-                    <div class="match-away">{{ match.away }} <span class="flag-icon">{{ flags.get(match.away, '') }}</span></div>
+                    <div class="match-away">{{ match.away }} <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.away, '') }}.png" alt=""></div>
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -86,7 +86,7 @@
                         {% for team in groups[group_letter] %}
                         <div class="tb-item" data-team="{{ team }}" draggable="{{ 'false' if is_submitted else 'true' }}">
                             <span class="tb-pos"></span>
-                            <span class="flag-icon">{{ flags.get(team, '') }}</span>
+                            <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(team, '') }}.png" alt="">
                             <span class="tb-name">{{ team }}</span>
                             <span class="tb-handle">⠿</span>
                         </div>
@@ -195,7 +195,7 @@
     const KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
     const THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
 
-    function flag(name) { return FLAGS[name] || ''; }
+    function flag(name) { const code = FLAGS[name]; return code ? '<img class="flag-icon" src="https://flagcdn.com/24x18/' + code +
     function teamLabel(name) { return name ? `${flag(name)} ${name}` : ''; }
 
     // ========== GROUP STANDINGS CALCULATION ==========
@@ -365,7 +365,7 @@
             const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
             if (item) {
                 item.dataset.team = t.name;
-                item.querySelector('.tb-3rd-flag').textContent = flag(t.name);
+                item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
                 item.querySelector('.tb-3rd-name').textContent = t.name;
                 item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
                 listEl.appendChild(item);

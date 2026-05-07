@@ -47,7 +47,7 @@ body {
 }
 
 .header h1 {
-    font-size: 1.6rem;
+    width: 24px; height: 18px;
     color: var(--gold);
     font-weight: 800;
     letter-spacing: 0.03em;
@@ -262,7 +262,7 @@ body {
 }
 
 .flag-icon {
-    font-size: 1.6rem;
+    width: 24px; height: 18px;
     vertical-align: middle;
 }
 
