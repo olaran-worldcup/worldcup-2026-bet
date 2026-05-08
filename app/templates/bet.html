@@ -5,11 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>World Cup 2026 | WW Hub Delivery Betting Pool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+    function selectBet(btn) {
+        if (btn.disabled) return;
+        var matchId = btn.getAttribute('data-match');
+        if (!matchId) return;
+        var siblings = document.querySelectorAll('.bet-btn[data-match="' + matchId + '"]');
+        for (var i = 0; i < siblings.length; i++) {
+            siblings[i].classList.remove('selected');
+        }
+        btn.classList.add('selected');
+        if (typeof afterBetSelect === 'function') {
+            try { afterBetSelect(btn); } catch(e) { console.error(e); }
+        }
+    }
+    </script>
 </head>
 <body>
     <div class="header">
         <h1>⚽ WORLD CUP 2026 ⚽<br><span style="font-size:0.7em; letter-spacing:0.05em;">WW Hub Delivery Betting Pool</span></h1>
-        <div class="subtitle" style="margin-top:0.5rem;"><img src="https://flagcdn.com/48x36/us.png" alt="USA" style="vertical-align:middle;margin:0 8px;"><img src="https://flagcdn.com/48x36/ca.png" alt="Canada" style="vertical-align:middle;margin:0 8px;"><img src="https://flagcdn.com/48x36/mx.png" alt="Mexico" style="vertical-align:middle;margin:0 8px;"></div>
+        <div class="subtitle" style="font-size:3rem; letter-spacing:0.4rem;">🇺🇸 🇨🇦 🇲🇽</div>
     </div>
     <div class="container">
         <div class="user-info">
@@ -62,19 +77,22 @@
                 {% for match in group_matches %}
                 {% if match.group == group_letter %}
                 <div class="match-row">
-                    <div class="match-home"><img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.home, '') }}.png" alt=""> {{ match.home }}</div>
+                    <div class="match-home"><span class="flag-icon">{{ flags.get(match.home, '') }}</span> {{ match.home }}</div>
                     <div class="match-bet">
                         <button class="bet-btn {% if bet_data.get('matches', {}).get(match.id) == '1' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="1" data-group="{{ group_letter }}"
+                                onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>1</button>
                         <button class="bet-btn {% if bet_data.get('matches', {}).get(match.id) == 'X' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="X" data-group="{{ group_letter }}"
+                                onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>X</button>
                         <button class="bet-btn {% if bet_data.get('matches', {}).get(match.id) == '2' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="2" data-group="{{ group_letter }}"
+                                onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>2</button>
                     </div>
-                    <div class="match-away">{{ match.away }} <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.away, '') }}.png" alt=""></div>
+                    <div class="match-away">{{ match.away }} <span class="flag-icon">{{ flags.get(match.away, '') }}</span></div>
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -86,7 +104,7 @@
                         {% for team in groups[group_letter] %}
                         <div class="tb-item" data-team="{{ team }}" draggable="{{ 'false' if is_submitted else 'true' }}">
                             <span class="tb-pos"></span>
-                            <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(team, '') }}.png" alt="">
+                            <span class="flag-icon">{{ flags.get(team, '') }}</span>
                             <span class="tb-name">{{ team }}</span>
                             <span class="tb-handle">⠿</span>
                         </div>
@@ -139,9 +157,11 @@
                     <div class="match-bet">
                         <button class="bet-btn ko-btn {% if bet_data.get('matches', {}).get(match.id) == '1' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="1"
+                                onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>1</button>
                         <button class="bet-btn ko-btn {% if bet_data.get('matches', {}).get(match.id) == '2' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="2"
+                                onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>2</button>
                     </div>
                     <div class="match-away ko-team-label" id="ko-away-{{ match.id }}">{{ match.away }}</div>
@@ -189,13 +209,13 @@
 
     <script>
     // Data from server
-    const FLAGS = {{ flags | tojson }};
-    const GROUPS = {{ groups | tojson }};
-    const GROUP_MATCHES = {{ group_matches | tojson }};
-    const KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
-    const THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
+    var FLAGS = {{ flags | tojson }};
+    var GROUPS = {{ groups | tojson }};
+    var GROUP_MATCHES = {{ group_matches | tojson }};
+    var KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
+    var THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
 
-    function flag(name) { const code = FLAGS[name]; return code ? '<img class="flag-icon" src="https://flagcdn.com/24x18/' + code +
+    function flag(name) { return FLAGS[name] || ''; }
     function teamLabel(name) { return name ? `${flag(name)} ${name}` : ''; }
 
     // ========== GROUP STANDINGS CALCULATION ==========
@@ -365,7 +385,7 @@
             const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
             if (item) {
                 item.dataset.team = t.name;
-                item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
+                item.querySelector('.tb-3rd-flag').textContent = flag(t.name);
                 item.querySelector('.tb-3rd-name').textContent = t.name;
                 item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
                 listEl.appendChild(item);
@@ -640,25 +660,14 @@
     }
 
     // ========== EVENT HANDLERS ==========
-    document.querySelectorAll('.bet-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const matchId = this.dataset.match;
-            document.querySelectorAll(`.bet-btn[data-match="${matchId}"]`).forEach(b => b.classList.remove('selected'));
-            this.classList.add('selected');
-
-            // Update tiebreakers for group matches
-            const group = this.dataset.group;
-            if (group) {
-                updateTiebreaker(group);
-                update3rdPlace();
-            }
-
-            // Update knockout labels
-            updateKnockoutLabels();
-        });
-    });
-
-    // Knockout labels update is handled in drag-end already
+    function afterBetSelect(btn) {
+        var group = btn.getAttribute('data-group');
+        if (group) {
+            updateTiebreaker(group);
+            update3rdPlace();
+        }
+        updateKnockoutLabels();
+    }
 
     // ========== COLLECT & SUBMIT ==========
     function collectBetData() {
@@ -690,13 +699,17 @@
     }
 
     async function saveDraft() {
-        const resp = await fetch('/bet/save', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({bet_data: collectBetData()})
-        });
-        const result = await resp.json();
-        showAlert(resp.ok ? result.message : result.error, resp.ok ? 'success' : 'error');
+        try {
+            const resp = await fetch('/bet/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({bet_data: collectBetData()})
+            });
+            const result = await resp.json();
+            showAlert(resp.ok ? result.message : result.error, resp.ok ? 'success' : 'error');
+        } catch (err) {
+            showAlert('Network error: ' + err.message, 'error');
+        }
     }
 
     async function submitBet() {
@@ -708,21 +721,29 @@
             return;
         }
         if (!confirm('Once submitted your bet is LOCKED permanently. Continue?')) return;
-        const resp = await fetch('/bet/submit', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({bet_data: betData})
-        });
-        const result = await resp.json();
-        if (resp.ok) { showAlert(result.message, 'success'); setTimeout(() => location.reload(), 1500); }
-        else { showAlert(result.error, 'error'); }
+        try {
+            const resp = await fetch('/bet/submit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({bet_data: betData})
+            });
+            const result = await resp.json();
+            if (resp.ok) { showAlert(result.message, 'success'); setTimeout(() => location.reload(), 1500); }
+            else { showAlert(result.error, 'error'); }
+        } catch (err) {
+            showAlert('Network error: ' + err.message, 'error');
+        }
     }
 
     // Initialize on page load
-    document.addEventListener('DOMContentLoaded', () => {
-        ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(g => updateTiebreaker(g));
-        update3rdPlace();
-        updateKnockoutLabels();
+    document.addEventListener('DOMContentLoaded', function() {
+        try {
+            ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) { updateTiebreaker(g); });
+            update3rdPlace();
+            updateKnockoutLabels();
+        } catch (err) {
+            console.error('Initialization error:', err);
+        }
     });
     </script>
 </body>
