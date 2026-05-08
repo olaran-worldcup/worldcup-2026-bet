@@ -380,20 +380,33 @@
             i = j;
         }
 
-        // Update DOM items to match sorted order
-        thirdTeams.forEach((t, idx) => {
-            const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
-            if (item) {
-                item.dataset.team = t.name;
-                item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
-                item.querySelector('.tb-3rd-name').textContent = t.name;
-                item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
-                listEl.appendChild(item);
-            }
-        });
+        // Update DOM items to match sorted order (only if user hasn't manually reordered)
+        const wasManuallyMoved = tbManuallyMoved.has('3rd');
+        if (!wasManuallyMoved) {
+            thirdTeams.forEach((t, idx) => {
+                const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
+                if (item) {
+                    item.dataset.team = t.name;
+                    item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
+                    item.querySelector('.tb-3rd-name').textContent = t.name;
+                    item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
+                    listEl.appendChild(item);
+                }
+            });
+        } else {
+            // Just update the team data/labels without reordering
+            thirdTeams.forEach((t) => {
+                const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
+                if (item) {
+                    item.dataset.team = t.name;
+                    item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
+                    item.querySelector('.tb-3rd-name').textContent = t.name;
+                    item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
+                }
+            });
+        }
 
         // Mark qualify line and styling
-        const wasManuallyMoved = tbManuallyMoved.has('3rd');
         const allItems = listEl.querySelectorAll('.tb-3rd-item');
         allItems.forEach((item, idx) => {
             const teamName = item.dataset.team;
