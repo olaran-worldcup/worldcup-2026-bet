@@ -413,7 +413,7 @@
         allItems.forEach((item, idx) => {
             const teamName = item.dataset.team;
             const isTied = tiedNames.has(teamName);
-            item.classList.remove('tied', 'resolved', 'locked');
+            item.classList.remove('tied', 'resolved', 'locked', 'qualify-line');
 
             if (isTied && !wasManuallyMoved) {
                 item.classList.add('tied');
@@ -435,6 +435,11 @@
             } else {
                 item.style.opacity = '0.45';
                 item.style.textDecoration = 'line-through';
+            }
+
+            // Add qualify/eliminate boundary line after position 8
+            if (idx === 7) {
+                item.classList.add('qualify-line');
             }
         });
 

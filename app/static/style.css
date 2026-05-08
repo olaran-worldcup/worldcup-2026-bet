@@ -262,7 +262,7 @@ body {
 }
 
 .flag-icon {
-    width: 24px; height: 18px;
+    font-size: 1.6rem;
     vertical-align: middle;
 }
 
@@ -447,6 +447,28 @@ body {
 
 .tb-item.locked .tb-handle {
     display: none;
+}
+
+/* 3rd place qualify/eliminate boundary */
+.tb-item.qualify-line {
+    border-bottom: 3px solid #dc2626;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.7rem;
+    position: relative;
+}
+
+.tb-item.qualify-line::after {
+    content: '▲ Qualify ─────── Eliminated ▼';
+    position: absolute;
+    bottom: -0.7rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    color: #dc2626;
+    font-weight: 700;
+    white-space: nowrap;
+    background: var(--white);
+    padding: 0 0.5rem;
 }
 
 /* Alerts */
