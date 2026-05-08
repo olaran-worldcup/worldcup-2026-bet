@@ -387,6 +387,7 @@
                 const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
                 if (item) {
                     item.dataset.team = t.name;
+                    item.dataset.pts = t.pts;
                     item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
                     item.querySelector('.tb-3rd-name').textContent = t.name;
                     item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
@@ -399,6 +400,7 @@
                 const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
                 if (item) {
                     item.dataset.team = t.name;
+                    item.dataset.pts = t.pts;
                     item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
                     item.querySelector('.tb-3rd-name').textContent = t.name;
                     item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
@@ -533,10 +535,34 @@
         list.addEventListener('dragover', (e) => {
             e.preventDefault();
             if (!draggedItem) return;
-            // Only allow reordering among tied items (not locked ones)
             const afterElement = getDragAfterElement(list, e.clientY);
-            // Ensure we don't move past locked items
             const allItems = [...list.querySelectorAll('.tb-item')];
+
+            // For 3rd-place list: only allow swapping within same points group
+            if (list.id === 'tb-list-3rd') {
+                const draggedPts = draggedItem.dataset.pts;
+                if (!draggedPts) return;
+                // Find the range of items with the same points
+                const samePtsItems = allItems.filter(it => it.dataset.pts === draggedPts);
+                if (samePtsItems.length < 2) return;
+                const firstIdx = allItems.indexOf(samePtsItems[0]);
+                const lastIdx = allItems.indexOf(samePtsItems[samePtsItems.length - 1]);
+
+                if (afterElement == null) {
+                    // Only append if last item in list has same pts
+                    if (allItems[allItems.length - 1].dataset.pts === draggedPts) {
+                        list.appendChild(draggedItem);
+                    }
+                } else {
+                    const afterIdx = allItems.indexOf(afterElement);
+                    if (afterIdx >= firstIdx && afterIdx <= lastIdx + 1) {
+                        list.insertBefore(draggedItem, afterElement);
+                    }
+                }
+                return;
+            }
+
+            // For group tiebreakers: only allow reordering among tied (not locked) items
             const tiedItems = allItems.filter(it => !it.classList.contains('locked'));
             if (tiedItems.length < 2) return;
 
@@ -544,7 +570,6 @@
             const lastTiedIdx = allItems.indexOf(tiedItems[tiedItems.length - 1]);
 
             if (afterElement == null) {
-                // Dropping at end — only if last position is within tied range
                 const lastItem = allItems[allItems.length - 1];
                 if (!lastItem.classList.contains('locked')) {
                     list.appendChild(draggedItem);
