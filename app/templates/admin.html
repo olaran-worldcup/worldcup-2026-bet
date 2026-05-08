@@ -52,13 +52,13 @@
                 {% for match in group_matches %}
                 {% if match.group == group_letter %}
                 <div class="match-row">
-                    <div class="match-home"><span class="flag-icon">{{ flags.get(match.home, '') }}</span> {{ match.home }}</div>
+                    <div class="match-home"><img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.home, '') }}.png" alt=""> {{ match.home }}</div>
                     <div class="match-bet">
                         <button class="result-btn bet-btn {% if results.get(match.id) == '1' %}selected{% endif %}" data-match="{{ match.id }}" data-value="1">1</button>
                         <button class="result-btn bet-btn {% if results.get(match.id) == 'X' %}selected{% endif %}" data-match="{{ match.id }}" data-value="X">X</button>
                         <button class="result-btn bet-btn {% if results.get(match.id) == '2' %}selected{% endif %}" data-match="{{ match.id }}" data-value="2">2</button>
                     </div>
-                    <div class="match-away">{{ match.away }} <span class="flag-icon">{{ flags.get(match.away, '') }}</span></div>
+                    <div class="match-away">{{ match.away }} <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.away, '') }}.png" alt=""></div>
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -126,24 +126,19 @@
         setTimeout(() => box.style.display = 'none', 3000);
     }
 
-    document.addEventListener('click', async function(e) {
-        const btn = e.target.closest('.result-btn');
-        if (!btn) return;
-
-        const matchId = btn.dataset.match;
-        const value = btn.dataset.value;
-        document.querySelectorAll(`.result-btn[data-match="${matchId}"]`).forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        try {
+    document.querySelectorAll('.result-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const matchId = this.dataset.match;
+            const value = this.dataset.value;
+            document.querySelectorAll(`.result-btn[data-match="${matchId}"]`).forEach(b => b.classList.remove('selected'));
+            this.classList.add('selected');
             const resp = await fetch('/admin/enter_result', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({match_id: matchId, result: value})
             });
             showAlert(resp.ok ? 'Saved' : 'Error', resp.ok ? 'success' : 'error');
-        } catch (err) {
-            showAlert('Network error: ' + err.message, 'error');
-        }
+        });
     });
 
     async function saveAwards() {

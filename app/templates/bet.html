@@ -24,7 +24,7 @@
 <body>
     <div class="header">
         <h1>⚽ WORLD CUP 2026 ⚽<br><span style="font-size:0.7em; letter-spacing:0.05em;">WW Hub Delivery Betting Pool</span></h1>
-        <div class="subtitle" style="font-size:3rem; letter-spacing:0.4rem;">🇺🇸 🇨🇦 🇲🇽</div>
+        <div class="subtitle" style="margin-top:0.5rem;"><img src="https://flagcdn.com/48x36/us.png" alt="USA" style="vertical-align:middle;margin:0 8px;"><img src="https://flagcdn.com/48x36/ca.png" alt="Canada" style="vertical-align:middle;margin:0 8px;"><img src="https://flagcdn.com/48x36/mx.png" alt="Mexico" style="vertical-align:middle;margin:0 8px;"></div>
     </div>
     <div class="container">
         <div class="user-info">
@@ -77,7 +77,7 @@
                 {% for match in group_matches %}
                 {% if match.group == group_letter %}
                 <div class="match-row">
-                    <div class="match-home"><span class="flag-icon">{{ flags.get(match.home, '') }}</span> {{ match.home }}</div>
+                    <div class="match-home"><img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.home, '') }}.png" alt=""> {{ match.home }}</div>
                     <div class="match-bet">
                         <button class="bet-btn {% if bet_data.get('matches', {}).get(match.id) == '1' %}selected{% endif %}"
                                 data-match="{{ match.id }}" data-value="1" data-group="{{ group_letter }}"
@@ -92,7 +92,7 @@
                                 onclick="selectBet(this)"
                                 {% if is_submitted %}disabled{% endif %}>2</button>
                     </div>
-                    <div class="match-away">{{ match.away }} <span class="flag-icon">{{ flags.get(match.away, '') }}</span></div>
+                    <div class="match-away">{{ match.away }} <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(match.away, '') }}.png" alt=""></div>
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -104,7 +104,7 @@
                         {% for team in groups[group_letter] %}
                         <div class="tb-item" data-team="{{ team }}" draggable="{{ 'false' if is_submitted else 'true' }}">
                             <span class="tb-pos"></span>
-                            <span class="flag-icon">{{ flags.get(team, '') }}</span>
+                            <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(team, '') }}.png" alt="">
                             <span class="tb-name">{{ team }}</span>
                             <span class="tb-handle">⠿</span>
                         </div>
@@ -209,14 +209,14 @@
 
     <script>
     // Data from server
-    var FLAGS = {{ flags | tojson }};
-    var GROUPS = {{ groups | tojson }};
-    var GROUP_MATCHES = {{ group_matches | tojson }};
-    var KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
-    var THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
+    const FLAGS = {{ flags | tojson }};
+    const GROUPS = {{ groups | tojson }};
+    const GROUP_MATCHES = {{ group_matches | tojson }};
+    const KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
+    const THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
 
-    function flag(name) { return FLAGS[name] || ''; }
-    function teamLabel(name) { return name ? `${flag(name)} ${name}` : ''; }
+    function flag(name) { var code = FLAGS[name]; return code ? '<img class="flag-icon" src="https://flagcdn.com/24x18/' + code + '.png" alt="">' : ''; }
+    function teamLabel(name) { return name ? flag(name) + ' ' + name : ''; }
 
     // ========== GROUP STANDINGS CALCULATION ==========
     function calcGroupStandings(groupLetter) {
@@ -385,7 +385,7 @@
             const item = listEl.querySelector(`.tb-3rd-item[data-group-origin="${t.group}"]`);
             if (item) {
                 item.dataset.team = t.name;
-                item.querySelector('.tb-3rd-flag').textContent = flag(t.name);
+                item.querySelector('.tb-3rd-flag').innerHTML = flag(t.name);
                 item.querySelector('.tb-3rd-name').textContent = t.name;
                 item.querySelector('.tb-3rd-pts').textContent = `${t.pts}pts GD${t.gd >= 0 ? '+' : ''}${t.gd}`;
                 listEl.appendChild(item);
@@ -699,17 +699,13 @@
     }
 
     async function saveDraft() {
-        try {
-            const resp = await fetch('/bet/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({bet_data: collectBetData()})
-            });
-            const result = await resp.json();
-            showAlert(resp.ok ? result.message : result.error, resp.ok ? 'success' : 'error');
-        } catch (err) {
-            showAlert('Network error: ' + err.message, 'error');
-        }
+        const resp = await fetch('/bet/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({bet_data: collectBetData()})
+        });
+        const result = await resp.json();
+        showAlert(resp.ok ? result.message : result.error, resp.ok ? 'success' : 'error');
     }
 
     async function submitBet() {
@@ -721,29 +717,21 @@
             return;
         }
         if (!confirm('Once submitted your bet is LOCKED permanently. Continue?')) return;
-        try {
-            const resp = await fetch('/bet/submit', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({bet_data: betData})
-            });
-            const result = await resp.json();
-            if (resp.ok) { showAlert(result.message, 'success'); setTimeout(() => location.reload(), 1500); }
-            else { showAlert(result.error, 'error'); }
-        } catch (err) {
-            showAlert('Network error: ' + err.message, 'error');
-        }
+        const resp = await fetch('/bet/submit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({bet_data: betData})
+        });
+        const result = await resp.json();
+        if (resp.ok) { showAlert(result.message, 'success'); setTimeout(() => location.reload(), 1500); }
+        else { showAlert(result.error, 'error'); }
     }
 
     // Initialize on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        try {
-            ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) { updateTiebreaker(g); });
-            update3rdPlace();
-            updateKnockoutLabels();
-        } catch (err) {
-            console.error('Initialization error:', err);
-        }
+    document.addEventListener('DOMContentLoaded', () => {
+        ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(g => updateTiebreaker(g));
+        update3rdPlace();
+        updateKnockoutLabels();
     });
     </script>
 </body>
