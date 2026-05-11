@@ -31,6 +31,7 @@ def index():
 def login():
     if request.method == 'POST':
         login_name = request.form.get('login', '').strip().lower()
+        password = request.form.get('password', '').strip()
         if not login_name:
             flash('Please enter your login name.', 'error')
             return render_template('login.html')
@@ -46,6 +47,13 @@ def login():
             conn.commit()
             user = conn.execute("SELECT * FROM users WHERE login = ?", (login_name,)).fetchone()
         conn.close()
+
+        # Admin requires password
+        if user['is_admin']:
+            admin_password = os.environ.get('ADMIN_PASSWORD', 'admin2026')
+            if password != admin_password:
+                flash('Invalid admin password.', 'error')
+                return render_template('login.html')
 
         session['user_id'] = user['id']
         session['login'] = user['login']
