@@ -232,6 +232,19 @@ def enter_result():
     return jsonify({'success': True})
 
 
+@app.route('/admin/clear_results', methods=['POST'])
+def clear_results():
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Admin access required'}), 403
+
+    conn = get_db()
+    conn.execute("DELETE FROM admin_results")
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'message': 'All results cleared.'})
+
+
 @app.route('/admin/report/<phase>')
 def admin_report(phase):
     if 'user_id' not in session or not session.get('is_admin'):
