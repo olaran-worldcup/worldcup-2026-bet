@@ -284,7 +284,10 @@
         // (this ensures tied teams are consecutive)
         sorted.forEach(t => {
             const item = listEl.querySelector(`.tb-item[data-team="${t.name}"]`);
-            if (item) listEl.appendChild(item);
+            if (item) {
+                item.dataset.pts = t.pts;
+                listEl.appendChild(item);
+            }
         });
 
         // Apply styling: tied = red + draggable, not tied = locked
@@ -567,21 +570,21 @@
                 return;
             }
 
-            // For group tiebreakers: only allow reordering among tied (not locked) items
-            const tiedItems = allItems.filter(it => !it.classList.contains('locked'));
-            if (tiedItems.length < 2) return;
-
-            const firstTiedIdx = allItems.indexOf(tiedItems[0]);
-            const lastTiedIdx = allItems.indexOf(tiedItems[tiedItems.length - 1]);
+            // For group tiebreakers: only allow reordering within same points group
+            const draggedPts = draggedItem.dataset.pts;
+            if (!draggedPts) return;
+            const samePtsItems = allItems.filter(it => it.dataset.pts === draggedPts);
+            if (samePtsItems.length < 2) return;
+            const firstIdx = allItems.indexOf(samePtsItems[0]);
+            const lastIdx = allItems.indexOf(samePtsItems[samePtsItems.length - 1]);
 
             if (afterElement == null) {
-                const lastItem = allItems[allItems.length - 1];
-                if (!lastItem.classList.contains('locked')) {
+                if (allItems[allItems.length - 1].dataset.pts === draggedPts) {
                     list.appendChild(draggedItem);
                 }
             } else {
                 const afterIdx = allItems.indexOf(afterElement);
-                if (afterIdx >= firstTiedIdx && afterIdx <= lastTiedIdx + 1) {
+                if (afterIdx >= firstIdx && afterIdx <= lastIdx + 1) {
                     list.insertBefore(draggedItem, afterElement);
                 }
             }
