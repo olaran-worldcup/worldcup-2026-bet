@@ -1,8 +1,10 @@
 """World Cup 2026 Betting App - Main Flask Application."""
 import os
+import io
+import csv
 import json
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, Response
 from app.models import get_db, init_db
 from app.game_data import TEAMS, GROUPS, FLAGS
 from app.game_data2 import GROUP_MATCHES
@@ -335,6 +337,219 @@ def admin_report(phase):
 
     # Return top 10
     return jsonify({'phase': phase, 'rankings': scores[:10], 'total_participants': len(scores)})
+
+
+# Points per phase (used by report and download)
+POINTS_MAP = {
+    'group': 1,
+    'R32': 4,
+    'R16': 6,
+    'QF': 10,
+    'SF': 16,
+    '3rd': 10,
+    'Final': 25,
+}
+
+
+def _calc_scores_for_phase(phase, bets, results_dict):
+    """Calculate scores for a given phase. Returns list of score dicts."""
+    match_list = []
+    if phase == 'group':
+        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
+    elif phase == 'R32':
+        match_list = [(m['id'], POINTS_MAP['R32']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R32']
+    elif phase == 'R16':
+        match_list = [(m['id'], POINTS_MAP['R16']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R16']
+    elif phase == 'QF':
+        match_list = [(m['id'], POINTS_MAP['QF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'QF']
+    elif phase == 'SF':
+        match_list = [(m['id'], POINTS_MAP['SF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'SF']
+    elif phase == 'Final':
+        match_list = [(m['id'], POINTS_MAP.get(m['phase'], 5)) for m in KNOCKOUT_MATCHES if m['phase'] in ['Final', '3rd']]
+    else:
+        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
+        match_list += [(m['id'], POINTS_MAP.get(m['phase'], 1)) for m in KNOCKOUT_MATCHES]
+
+    scores = []
+    for bet_row in bets:
+        bet_data = json.loads(bet_row['bet_data'])
+        user_matches = bet_data.get('matches', {})
+        points = 0
+        correct = 0
+        total = 0
+
+        for mid, weight in match_list:
+            if mid in results_dict:
+                total += 1
+                if mid in user_matches and user_matches[mid] == results_dict[mid]:
+                    points += weight
+                    correct += 1
+
+        awards_correct = 0
+        if phase in ('all', 'Final', 'general'):
+            user_awards = bet_data.get('awards', {})
+            for award_key in ['golden_ball', 'golden_boot', 'golden_glove']:
+                actual = results_dict.get(f'award_{award_key}')
+                if actual and user_awards.get(award_key, '').strip().lower() == actual.strip().lower():
+                    points += 10
+                    awards_correct += 1
+
+        scores.append({
+            'login': bet_row['login'],
+            'display_name': bet_row['display_name'],
+            'points': points,
+            'correct': correct,
+            'total': total,
+            'awards_correct': awards_correct,
+            'pct': round(correct / total * 100, 1) if total > 0 else 0
+        })
+
+    scores.sort(key=lambda x: x['points'], reverse=True)
+    return scores
+
+
+@app.route('/admin/report/general')
+def admin_report_general():
+    """General ranking: sum of points across all individual phases."""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Admin access required'}), 403
+
+    conn = get_db()
+    bets = conn.execute("""
+        SELECT u.login, u.display_name, b.bet_data
+        FROM users u JOIN bets b ON u.id = b.user_id
+        WHERE b.submitted = 1
+    """).fetchall()
+    results = conn.execute("SELECT * FROM admin_results").fetchall()
+    results_dict = {r['match_id']: r['result'] for r in results}
+    conn.close()
+
+    phases = ['group', 'R32', 'R16', 'QF', 'SF', 'Final']
+    # Calculate per-user totals across all phases
+    user_totals = {}
+    for phase in phases:
+        phase_scores = _calc_scores_for_phase(phase, bets, results_dict)
+        for s in phase_scores:
+            login = s['login']
+            if login not in user_totals:
+                user_totals[login] = {
+                    'login': s['login'],
+                    'display_name': s['display_name'],
+                    'points': 0, 'correct': 0, 'total': 0
+                }
+            user_totals[login]['points'] += s['points']
+            user_totals[login]['correct'] += s['correct']
+            user_totals[login]['total'] += s['total']
+
+    scores = list(user_totals.values())
+    for s in scores:
+        s['pct'] = round(s['correct'] / s['total'] * 100, 1) if s['total'] > 0 else 0
+        s['awards_correct'] = 0
+
+    scores.sort(key=lambda x: x['points'], reverse=True)
+    return jsonify({'phase': 'general', 'rankings': scores[:10], 'total_participants': len(scores)})
+
+
+@app.route('/admin/download/report/<phase>')
+def download_report(phase):
+    """Download report as CSV."""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Admin access required'}), 403
+
+    conn = get_db()
+    bets = conn.execute("""
+        SELECT u.login, u.display_name, b.bet_data
+        FROM users u JOIN bets b ON u.id = b.user_id
+        WHERE b.submitted = 1
+    """).fetchall()
+    results = conn.execute("SELECT * FROM admin_results").fetchall()
+    results_dict = {r['match_id']: r['result'] for r in results}
+    conn.close()
+
+    if phase == 'general':
+        phases = ['group', 'R32', 'R16', 'QF', 'SF', 'Final']
+        user_totals = {}
+        for p in phases:
+            phase_scores = _calc_scores_for_phase(p, bets, results_dict)
+            for s in phase_scores:
+                login = s['login']
+                if login not in user_totals:
+                    user_totals[login] = {
+                        'login': s['login'], 'display_name': s['display_name'],
+                        'points': 0, 'correct': 0, 'total': 0
+                    }
+                user_totals[login]['points'] += s['points']
+                user_totals[login]['correct'] += s['correct']
+                user_totals[login]['total'] += s['total']
+        scores = list(user_totals.values())
+        for s in scores:
+            s['pct'] = round(s['correct'] / s['total'] * 100, 1) if s['total'] > 0 else 0
+        scores.sort(key=lambda x: x['points'], reverse=True)
+    else:
+        scores = _calc_scores_for_phase(phase, bets, results_dict)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Rank', 'Player', 'Points', 'Correct', 'Total', 'Accuracy %'])
+    for i, s in enumerate(scores):
+        writer.writerow([i + 1, s['display_name'], s['points'], s['correct'], s['total'], s['pct']])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=report_{phase}.csv'}
+    )
+
+
+@app.route('/admin/download/bet/<login>')
+def download_bet(login):
+    """Download a user's submitted bet as CSV."""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Admin access required'}), 403
+
+    conn = get_db()
+    row = conn.execute("""
+        SELECT u.display_name, b.bet_data, b.submitted_at
+        FROM users u JOIN bets b ON u.id = b.user_id
+        WHERE u.login = ? AND b.submitted = 1
+    """, (login,)).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({'error': 'Bet not found'}), 404
+
+    bet_data = json.loads(row['bet_data'])
+    matches = bet_data.get('matches', {})
+    awards = bet_data.get('awards', {})
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Player', row['display_name']])
+    writer.writerow(['Submitted', row['submitted_at']])
+    writer.writerow([])
+    writer.writerow(['Match ID', 'Home', 'Away', 'Prediction'])
+
+    # Group matches
+    for m in ALL_GROUP_MATCHES:
+        pred = matches.get(m['id'], '')
+        writer.writerow([m['id'], m['home'], m['away'], pred])
+
+    # Knockout matches
+    for m in KNOCKOUT_MATCHES:
+        pred = matches.get(m['id'], '')
+        writer.writerow([m['id'], m['home'], m['away'], pred])
+
+    # Awards
+    writer.writerow([])
+    writer.writerow(['Award', 'Prediction'])
+    for key in ['golden_ball', 'golden_boot', 'golden_glove']:
+        writer.writerow([key, awards.get(key, '')])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=bet_{login}.csv'}
+    )
 
 
 if __name__ == '__main__':

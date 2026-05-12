@@ -29,7 +29,7 @@
         <div id="tab-participants" class="admin-panel">
             <h3 style="margin-bottom:0.6rem; font-size:0.95rem; color:var(--accent-gold);">Registered Participants</h3>
             <table class="report-table">
-                <thead><tr><th>Login</th><th>Name</th><th>Status</th><th>Submitted</th></tr></thead>
+                <thead><tr><th>Login</th><th>Name</th><th>Status</th><th>Submitted</th><th>Download</th></tr></thead>
                 <tbody>
                     {% for u in users %}
                     <tr>
@@ -37,6 +37,7 @@
                         <td>{{ u.display_name }}</td>
                         <td>{% if u.submitted %}<span class="status-badge status-submitted">✓</span>{% else %}<span class="status-badge status-pending">—</span>{% endif %}</td>
                         <td style="font-size:0.75rem; color:var(--text-muted);">{{ u.submitted_at or '-' }}</td>
+                        <td>{% if u.submitted %}<a href="{{ url_for('download_bet', login=u.login) }}" style="font-size:0.75rem;">📥 CSV</a>{% else %}-{% endif %}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -107,9 +108,12 @@
                 <button class="btn btn-primary" style="width:auto; font-size:0.8rem;" onclick="loadReport('QF')">QF</button>
                 <button class="btn btn-primary" style="width:auto; font-size:0.8rem;" onclick="loadReport('SF')">SF</button>
                 <button class="btn btn-primary" style="width:auto; font-size:0.8rem;" onclick="loadReport('Final')">Final</button>
-                <button class="btn" style="width:auto; font-size:0.8rem; background:var(--accent-coral); color:#fff;" onclick="loadReport('all')">Overall</button>
+                <button class="btn" style="width:auto; font-size:0.8rem; background:var(--navy); color:var(--gold); border:1px solid var(--gold);" onclick="loadReport('general')">General</button>
             </div>
             <div id="report-content"></div>
+            <div id="report-download" style="margin-top:0.8rem; display:none;">
+                <a id="report-download-link" class="btn btn-primary" style="width:auto; font-size:0.8rem; text-decoration:none;">📥 Download CSV</a>
+            </div>
         </div>
     </div>
 
@@ -183,6 +187,13 @@
         });
         html += '</tbody></table>';
         document.getElementById('report-content').innerHTML = html;
+
+        // Show download link
+        const dlDiv = document.getElementById('report-download');
+        const dlLink = document.getElementById('report-download-link');
+        dlLink.href = '/admin/download/report/' + phase;
+        dlLink.textContent = '📥 Download ' + phase.charAt(0).toUpperCase() + phase.slice(1) + ' Report (CSV)';
+        dlDiv.style.display = 'block';
     }
     </script>
 </body>
