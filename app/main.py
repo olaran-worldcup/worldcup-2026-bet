@@ -112,7 +112,7 @@ def save_bet():
     existing = conn.execute("SELECT * FROM bets WHERE user_id = ?", (user_id,)).fetchone()
     if existing and existing['submitted']:
         conn.close()
-        return jsonify({'error': 'Bet already submitted and locked. No changes allowed.'}), 403
+        return jsonify({'error': 'Vote already submitted and locked. No changes allowed.'}), 403
 
     data = request.get_json()
     bet_data = json.dumps(data.get('bet_data', {}))
@@ -124,7 +124,7 @@ def save_bet():
 
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'message': 'Bet saved (draft).'})
+    return jsonify({'success': True, 'message': 'Vote saved (draft).'})
 
 
 @app.route('/bet/submit', methods=['POST'])
@@ -138,7 +138,7 @@ def submit_bet():
     existing = conn.execute("SELECT * FROM bets WHERE user_id = ?", (user_id,)).fetchone()
     if existing and existing['submitted']:
         conn.close()
-        return jsonify({'error': 'Bet already submitted and locked.'}), 403
+        return jsonify({'error': 'Vote already submitted and locked.'}), 403
 
     data = request.get_json()
     bet_data = data.get('bet_data', {})
@@ -171,7 +171,7 @@ def submit_bet():
 
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'message': 'Bet submitted and locked! Good luck!'})
+    return jsonify({'success': True, 'message': 'Vote submitted and locked! Good luck!'})
 
 
 # ============ ADMIN ROUTES ============

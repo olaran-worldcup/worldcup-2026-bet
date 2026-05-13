@@ -40,10 +40,10 @@
         </div>
 
         {% if is_submitted %}
-        <div class="alert alert-success">Your bet is submitted and locked. No further changes allowed.</div>
+        <div class="alert alert-success">Your vote is submitted and locked. No further changes allowed.</div>
         {% else %}
         <div class="alert alert-info">
-            Fill in all predictions, then click <strong>Submit</strong> to lock your bet permanently.
+            Fill in all predictions, then click <strong>Submit</strong> to lock your vote permanently.
         </div>
         {% endif %}
 
@@ -62,7 +62,7 @@
                 <strong>Individual Awards (bonus)</strong><br>
                 &bull; Golden Ball / Boot / Glove: <strong>10 pts each</strong><br><br>
                 <strong>Max possible: ~417 pts</strong><br>
-                <span style="font-size:0.75rem; opacity:0.7;">One bet per person. Once submitted = locked forever. Top 10 shared after each phase.</span>
+                <span style="font-size:0.75rem; opacity:0.7;">One vote per person. Once submitted = locked forever. Top 10 shared after each phase.</span>
             </div>
         </div>
 
@@ -202,7 +202,7 @@
             <button class="btn" onclick="saveDraft()" style="margin-right:0.8rem; background:var(--bg-card); color:var(--text-secondary); border:1px solid var(--border);">
                 Save Draft
             </button>
-            <button class="btn btn-submit" onclick="submitBet()">Submit Bet</button>
+            <button class="btn btn-submit" onclick="submitBet()">Submit Vote</button>
         </div>
         {% endif %}
     </div>
@@ -745,7 +745,7 @@
     }
 
     async function saveDraft() {
-        const resp = await fetch('/bet/save', {
+        const resp = await fetch('/vote/save', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({bet_data: collectBetData()})
@@ -762,7 +762,7 @@
             showAlert(`${filled} of ${totalExpected} matches filled. Complete all predictions.`, 'error');
             return;
         }
-        if (!confirm('Once submitted your bet is LOCKED permanently. Continue?')) return;
+        if (!confirm('Once submitted your vote is LOCKED permanently. Continue?')) return;
         const resp = await fetch('/bet/submit', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
