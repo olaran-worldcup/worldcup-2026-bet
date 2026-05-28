@@ -10,6 +10,7 @@ from app.game_data import TEAMS, GROUPS, FLAGS
 from app.game_data2 import GROUP_MATCHES
 from app.game_data3 import GROUP_MATCHES_2, KNOCKOUT_MATCHES
 from app.third_place_data import THIRD_PLACE_TABLE
+import psycopg2.extras
 
 ALL_GROUP_MATCHES = GROUP_MATCHES + GROUP_MATCHES_2
 
@@ -39,15 +40,18 @@ def login():
             return render_template('login.html')
 
         conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE login = ?", (login_name,)).fetchone()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM users WHERE login = %s", (login_name,))
+        user = cur.fetchone()
         if not user:
-            # Auto-register new users
-            conn.execute(
-                "INSERT INTO users (login, display_name) VALUES (?, ?)",
+            cur.execute(
+                "INSERT INTO users (login, display_name) VALUES (%s, %s)",
                 (login_name, login_name.title())
             )
             conn.commit()
-            user = conn.execute("SELECT * FROM users WHERE login = ?", (login_name,)).fetchone()
+            cur.execute("SELECT * FROM users WHERE login = %s", (login_name,))
+            user = cur.fetchone()
+        cur.close()
         conn.close()
 
         # Admin requires password
@@ -82,7 +86,10 @@ def bet_form():
 
     user_id = session['user_id']
     conn = get_db()
-    bet = conn.execute("SELECT * FROM bets WHERE user_id = ?", (user_id,)).fetchone()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM bets WHERE user_id = %s", (user_id,))
+    bet = cur.fetchone()
+    cur.close()
     conn.close()
 
     is_submitted = bet and bet['submitted']
@@ -107,10 +114,12 @@ def save_bet():
 
     user_id = session['user_id']
     conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Check if already submitted
-    existing = conn.execute("SELECT * FROM bets WHERE user_id = ?", (user_id,)).fetchone()
+    cur.execute("SELECT * FROM bets WHERE user_id = %s", (user_id,))
+    existing = cur.fetchone()
     if existing and existing['submitted']:
+        cur.close()
         conn.close()
         return jsonify({'error': 'Vote already submitted and locked. No changes allowed.'}), 403
 
@@ -118,11 +127,12 @@ def save_bet():
     bet_data = json.dumps(data.get('bet_data', {}))
 
     if existing:
-        conn.execute("UPDATE bets SET bet_data = ? WHERE user_id = ?", (bet_data, user_id))
+        cur.execute("UPDATE bets SET bet_data = %s WHERE user_id = %s", (bet_data, user_id))
     else:
-        conn.execute("INSERT INTO bets (user_id, bet_data) VALUES (?, ?)", (user_id, bet_data))
+        cur.execute("INSERT INTO bets (user_id, bet_data) VALUES (%s, %s)", (user_id, bet_data))
 
     conn.commit()
+    cur.close()
     conn.close()
     return jsonify({'success': True, 'message': 'Vote saved (draft).'})
 
@@ -134,9 +144,12 @@ def submit_bet():
 
     user_id = session['user_id']
     conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    existing = conn.execute("SELECT * FROM bets WHERE user_id = ?", (user_id,)).fetchone()
+    cur.execute("SELECT * FROM bets WHERE user_id = %s", (user_id,))
+    existing = cur.fetchone()
     if existing and existing['submitted']:
+        cur.close()
         conn.close()
         return jsonify({'error': 'Vote already submitted and locked.'}), 403
 
@@ -146,12 +159,14 @@ def submit_bet():
     # Validate all group matches have a prediction
     for match in ALL_GROUP_MATCHES:
         if match['id'] not in bet_data.get('matches', {}):
+            cur.close()
             conn.close()
             return jsonify({'error': f"Missing prediction for {match['home']} vs {match['away']}"}), 400
 
     # Validate knockout matches
     for match in KNOCKOUT_MATCHES:
         if match['id'] not in bet_data.get('matches', {}):
+            cur.close()
             conn.close()
             return jsonify({'error': f"Missing prediction for knockout match {match['match_num']}"}), 400
 
@@ -159,17 +174,18 @@ def submit_bet():
     now = datetime.now().isoformat()
 
     if existing:
-        conn.execute(
-            "UPDATE bets SET bet_data = ?, submitted = 1, submitted_at = ? WHERE user_id = ?",
+        cur.execute(
+            "UPDATE bets SET bet_data = %s, submitted = 1, submitted_at = %s WHERE user_id = %s",
             (bet_json, now, user_id)
         )
     else:
-        conn.execute(
-            "INSERT INTO bets (user_id, bet_data, submitted, submitted_at) VALUES (?, ?, 1, ?)",
+        cur.execute(
+            "INSERT INTO bets (user_id, bet_data, submitted, submitted_at) VALUES (%s, %s, 1, %s)",
             (user_id, bet_json, now)
         )
 
     conn.commit()
+    cur.close()
     conn.close()
     return jsonify({'success': True, 'message': 'Vote submitted and locked! Good luck!'})
 
@@ -183,17 +199,20 @@ def admin_panel():
         return redirect(url_for('login'))
 
     conn = get_db()
-    users = conn.execute("""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
         SELECT u.login, u.display_name, b.submitted, b.submitted_at
         FROM users u LEFT JOIN bets b ON u.id = b.user_id
         WHERE u.is_admin = 0
         ORDER BY u.login
-    """).fetchall()
+    """)
+    users = cur.fetchall()
 
-    # Get admin results
-    results = conn.execute("SELECT * FROM admin_results").fetchall()
+    cur.execute("SELECT * FROM admin_results")
+    results = cur.fetchall()
     results_dict = {r['match_id']: r['result'] for r in results}
 
+    cur.close()
     conn.close()
 
     return render_template('admin.html',
@@ -218,17 +237,18 @@ def enter_result():
     if not match_id or not result:
         return jsonify({'error': 'Invalid data'}), 400
 
-    # For regular matches, validate 1/X/2; for awards, accept any text
     if not match_id.startswith('award_'):
         if result not in ['1', 'X', '2']:
             return jsonify({'error': 'Invalid result value'}), 400
 
     conn = get_db()
-    conn.execute(
-        "INSERT OR REPLACE INTO admin_results (match_id, result) VALUES (?, ?)",
-        (match_id, result)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO admin_results (match_id, result) VALUES (%s, %s) ON CONFLICT (match_id) DO UPDATE SET result = %s",
+        (match_id, result, result)
     )
     conn.commit()
+    cur.close()
     conn.close()
 
     return jsonify({'success': True})
@@ -240,106 +260,34 @@ def clear_results():
         return jsonify({'error': 'Admin access required'}), 403
 
     conn = get_db()
-    conn.execute("DELETE FROM admin_results")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM admin_results")
     conn.commit()
+    cur.close()
     conn.close()
 
     return jsonify({'success': True, 'message': 'All results cleared.'})
 
 
-@app.route('/admin/report/<phase>')
-def admin_report(phase):
-    if 'user_id' not in session or not session.get('is_admin'):
-        return jsonify({'error': 'Admin access required'}), 403
-
+def _get_bets_and_results():
+    """Helper to fetch all submitted bets and admin results."""
     conn = get_db()
-
-    # Get all submitted bets
-    bets = conn.execute("""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
         SELECT u.login, u.display_name, b.bet_data
         FROM users u JOIN bets b ON u.id = b.user_id
         WHERE b.submitted = 1
-    """).fetchall()
-
-    # Get actual results
-    results = conn.execute("SELECT * FROM admin_results").fetchall()
+    """)
+    bets = cur.fetchall()
+    cur.execute("SELECT * FROM admin_results")
+    results = cur.fetchall()
     results_dict = {r['match_id']: r['result'] for r in results}
+    cur.close()
     conn.close()
-
-    # Points per phase
-    POINTS_MAP = {
-        'group': 1,    # group stage match
-        'R32': 4,      # round of 32
-        'R16': 6,      # round of 16
-        'QF': 10,      # quarter-finals
-        'SF': 16,      # semi-finals
-        '3rd': 10,     # third place
-        'Final': 25,   # final
-    }
-
-    # Build match list with weights based on requested phase
-    match_list = []  # list of (match_id, weight)
-    if phase == 'group':
-        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
-    elif phase == 'R32':
-        match_list = [(m['id'], POINTS_MAP['R32']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R32']
-    elif phase == 'R16':
-        match_list = [(m['id'], POINTS_MAP['R16']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R16']
-    elif phase == 'QF':
-        match_list = [(m['id'], POINTS_MAP['QF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'QF']
-    elif phase == 'SF':
-        match_list = [(m['id'], POINTS_MAP['SF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'SF']
-    elif phase == 'Final':
-        match_list = [(m['id'], POINTS_MAP.get(m['phase'], 5)) for m in KNOCKOUT_MATCHES if m['phase'] in ['Final', '3rd']]
-    else:
-        # All matches
-        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
-        match_list += [(m['id'], POINTS_MAP.get(m['phase'], 1)) for m in KNOCKOUT_MATCHES]
-
-    # Calculate scores
-    scores = []
-    for bet_row in bets:
-        bet_data = json.loads(bet_row['bet_data'])
-        user_matches = bet_data.get('matches', {})
-        points = 0
-        correct = 0
-        total = 0
-
-        for mid, weight in match_list:
-            if mid in results_dict:
-                total += 1
-                if mid in user_matches and user_matches[mid] == results_dict[mid]:
-                    points += weight
-                    correct += 1
-
-        # Golden awards scoring (10 pts each, only in 'all' or 'Final' phase)
-        awards_correct = 0
-        if phase in ('all', 'Final'):
-            user_awards = bet_data.get('awards', {})
-            for award_key in ['golden_ball', 'golden_boot', 'golden_glove']:
-                actual = results_dict.get(f'award_{award_key}')
-                if actual and user_awards.get(award_key, '').strip().lower() == actual.strip().lower():
-                    points += 10
-                    awards_correct += 1
-
-        scores.append({
-            'login': bet_row['login'],
-            'display_name': bet_row['display_name'],
-            'points': points,
-            'correct': correct,
-            'total': total,
-            'awards_correct': awards_correct,
-            'pct': round(correct / total * 100, 1) if total > 0 else 0
-        })
-
-    # Sort by points descending
-    scores.sort(key=lambda x: x['points'], reverse=True)
-
-    # Return top 10
-    return jsonify({'phase': phase, 'rankings': scores[:10], 'total_participants': len(scores)})
+    return bets, results_dict
 
 
-# Points per phase (used by report and download)
+# Points per phase
 POINTS_MAP = {
     'group': 1,
     'R32': 4,
@@ -352,7 +300,7 @@ POINTS_MAP = {
 
 
 def _calc_scores_for_phase(phase, bets, results_dict):
-    """Calculate scores for a given phase. Returns list of score dicts."""
+    """Calculate scores for a given phase."""
     match_list = []
     if phase == 'group':
         match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
@@ -408,24 +356,25 @@ def _calc_scores_for_phase(phase, bets, results_dict):
     return scores
 
 
+@app.route('/admin/report/<phase>')
+def admin_report(phase):
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Admin access required'}), 403
+
+    bets, results_dict = _get_bets_and_results()
+    scores = _calc_scores_for_phase(phase, bets, results_dict)
+    return jsonify({'phase': phase, 'rankings': scores[:10], 'total_participants': len(scores)})
+
+
 @app.route('/admin/report/general')
 def admin_report_general():
     """General ranking: sum of points across all individual phases."""
     if 'user_id' not in session or not session.get('is_admin'):
         return jsonify({'error': 'Admin access required'}), 403
 
-    conn = get_db()
-    bets = conn.execute("""
-        SELECT u.login, u.display_name, b.bet_data
-        FROM users u JOIN bets b ON u.id = b.user_id
-        WHERE b.submitted = 1
-    """).fetchall()
-    results = conn.execute("SELECT * FROM admin_results").fetchall()
-    results_dict = {r['match_id']: r['result'] for r in results}
-    conn.close()
+    bets, results_dict = _get_bets_and_results()
 
     phases = ['group', 'R32', 'R16', 'QF', 'SF', 'Final']
-    # Calculate per-user totals across all phases
     user_totals = {}
     for phase in phases:
         phase_scores = _calc_scores_for_phase(phase, bets, results_dict)
@@ -456,15 +405,7 @@ def download_report(phase):
     if 'user_id' not in session or not session.get('is_admin'):
         return jsonify({'error': 'Admin access required'}), 403
 
-    conn = get_db()
-    bets = conn.execute("""
-        SELECT u.login, u.display_name, b.bet_data
-        FROM users u JOIN bets b ON u.id = b.user_id
-        WHERE b.submitted = 1
-    """).fetchall()
-    results = conn.execute("SELECT * FROM admin_results").fetchall()
-    results_dict = {r['match_id']: r['result'] for r in results}
-    conn.close()
+    bets, results_dict = _get_bets_and_results()
 
     if phase == 'general':
         phases = ['group', 'R32', 'R16', 'QF', 'SF', 'Final']
@@ -503,20 +444,23 @@ def download_report(phase):
 
 @app.route('/admin/download/bet/<login>')
 def download_bet(login):
-    """Download a user's submitted bet as CSV."""
+    """Download a user's submitted vote as CSV."""
     if 'user_id' not in session or not session.get('is_admin'):
         return jsonify({'error': 'Admin access required'}), 403
 
     conn = get_db()
-    row = conn.execute("""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
         SELECT u.display_name, b.bet_data, b.submitted_at
         FROM users u JOIN bets b ON u.id = b.user_id
-        WHERE u.login = ? AND b.submitted = 1
-    """, (login,)).fetchone()
+        WHERE u.login = %s AND b.submitted = 1
+    """, (login,))
+    row = cur.fetchone()
+    cur.close()
     conn.close()
 
     if not row:
-        return jsonify({'error': 'Bet not found'}), 404
+        return jsonify({'error': 'Vote not found'}), 404
 
     bet_data = json.loads(row['bet_data'])
     matches = bet_data.get('matches', {})
@@ -529,17 +473,14 @@ def download_bet(login):
     writer.writerow([])
     writer.writerow(['Match ID', 'Home', 'Away', 'Prediction'])
 
-    # Group matches
     for m in ALL_GROUP_MATCHES:
         pred = matches.get(m['id'], '')
         writer.writerow([m['id'], m['home'], m['away'], pred])
 
-    # Knockout matches
     for m in KNOCKOUT_MATCHES:
         pred = matches.get(m['id'], '')
         writer.writerow([m['id'], m['home'], m['away'], pred])
 
-    # Awards
     writer.writerow([])
     writer.writerow(['Award', 'Prediction'])
     for key in ['golden_ball', 'golden_boot', 'golden_glove']:
@@ -548,7 +489,7 @@ def download_bet(login):
     return Response(
         output.getvalue(),
         mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment; filename=bet_{login}.csv'}
+        headers={'Content-Disposition': f'attachment; filename=vote_{login}.csv'}
     )
 
 
