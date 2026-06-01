@@ -363,15 +363,20 @@
         const qualifyEl = document.getElementById('tb-3rd-qualify');
         const items = listEl.querySelectorAll('.tb-3rd-item');
 
-        // Get 3rd-place team from each group
+        // Get 3rd-place team from each group (respecting user's tiebreaker drag order)
         const thirdTeams = [];
         let allGroupsFilled = true;
         ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(g => {
             const { sorted, allFilled } = calcGroupStandings(g);
             if (!allFilled) { allGroupsFilled = false; return; }
-            const third = sorted[2]; // 0-indexed position 2 = 3rd place
-            if (third) {
-                thirdTeams.push({ name: third.name, group: g, pts: third.pts, gd: third.gd, gf: third.gf });
+            // Use getGroupPosition which respects manual tiebreaker order
+            const thirdName = getGroupPosition(g, 3);
+            if (thirdName) {
+                // Get the stats for this team from the calculated standings
+                const teamStats = sorted.find(t => t.name === thirdName);
+                if (teamStats) {
+                    thirdTeams.push({ name: teamStats.name, group: g, pts: teamStats.pts, gd: teamStats.gd, gf: teamStats.gf });
+                }
             }
         });
 
