@@ -92,7 +92,9 @@ def bet_form():
     cur.close()
     conn.close()
 
-    is_submitted = bet and bet['submitted']
+    # Submitted AND no resubmit allowed = locked
+    is_submitted = bet and bet['submitted'] and not bet.get('resubmit_allowed')
+    is_resubmit = bet and bet['submitted'] and bet.get('resubmit_allowed')
     bet_data = json.loads(bet['bet_data']) if bet else {}
 
     return render_template('bet.html',
@@ -104,6 +106,7 @@ def bet_form():
                            third_place_table=THIRD_PLACE_TABLE,
                            bet_data=bet_data,
                            is_submitted=is_submitted,
+                           is_resubmit=is_resubmit,
                            user=session)
 
 
@@ -118,7 +121,7 @@ def save_bet():
 
     cur.execute("SELECT * FROM bets WHERE user_id = %s", (user_id,))
     existing = cur.fetchone()
-    if existing and existing['submitted']:
+    if existing and existing['submitted'] and not existing.get('resubmit_allowed'):
         cur.close()
         conn.close()
         return jsonify({'error': 'Vote already submitted and locked. No changes allowed.'}), 403
@@ -148,7 +151,7 @@ def submit_bet():
 
     cur.execute("SELECT * FROM bets WHERE user_id = %s", (user_id,))
     existing = cur.fetchone()
-    if existing and existing['submitted']:
+    if existing and existing['submitted'] and not existing.get('resubmit_allowed'):
         cur.close()
         conn.close()
         return jsonify({'error': 'Vote already submitted and locked.'}), 403
@@ -175,12 +178,12 @@ def submit_bet():
 
     if existing:
         cur.execute(
-            "UPDATE bets SET bet_data = %s, submitted = 1, submitted_at = %s WHERE user_id = %s",
+            "UPDATE bets SET bet_data = %s, submitted = 1, submitted_at = %s, resubmit_allowed = 0 WHERE user_id = %s",
             (bet_json, now, user_id)
         )
     else:
         cur.execute(
-            "INSERT INTO bets (user_id, bet_data, submitted, submitted_at) VALUES (%s, %s, 1, %s)",
+            "INSERT INTO bets (user_id, bet_data, submitted, submitted_at, resubmit_allowed) VALUES (%s, %s, 1, %s, 0)",
             (user_id, bet_json, now)
         )
 

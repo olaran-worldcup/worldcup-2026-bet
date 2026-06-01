@@ -30,6 +30,7 @@ def init_db():
             submitted INTEGER DEFAULT 0,
             submitted_at TEXT,
             bet_data TEXT NOT NULL DEFAULT '{}',
+            resubmit_allowed INTEGER DEFAULT 0,
             UNIQUE(user_id)
         );
     ''')
@@ -41,6 +42,20 @@ def init_db():
             entered_at TIMESTAMP DEFAULT NOW()
         );
     ''')
+    # Add resubmit_allowed column if it doesn't exist (migration for existing DBs)
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'bets' AND column_name = 'resubmit_allowed'
+            ) THEN
+                ALTER TABLE bets ADD COLUMN resubmit_allowed INTEGER DEFAULT 0;
+                -- Allow all currently submitted bets to resubmit once
+                UPDATE bets SET resubmit_allowed = 1 WHERE submitted = 1;
+            END IF;
+        END $$;
+    """)
     # Create default admin user if not exists
     cur.execute(
         "INSERT INTO users (login, display_name, is_admin) VALUES (%s, %s, %s) ON CONFLICT (login) DO NOTHING",

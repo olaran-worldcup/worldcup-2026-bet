@@ -13,8 +13,8 @@ GROUP_MATCHES = [
     {"id": "GB2", "group": "B", "home": "Qatar", "away": "Switzerland", "date": "2026-06-13 15:00"},
     {"id": "GB3", "group": "B", "home": "Switzerland", "away": "Bosnia and Herzegovina", "date": "2026-06-18 15:00"},
     {"id": "GB4", "group": "B", "home": "Canada", "away": "Qatar", "date": "2026-06-19 18:00"},
-    {"id": "GB5", "group": "B", "home": "Bosnia and Herzegovina", "away": "Canada", "date": "2026-06-25 15:00"},
-    {"id": "GB6", "group": "B", "home": "Switzerland", "away": "Qatar", "date": "2026-06-25 15:00"},
+    {"id": "GB5", "group": "B", "home": "Bosnia and Herzegovina", "away": "Qatar", "date": "2026-06-25 15:00"},
+    {"id": "GB6", "group": "B", "home": "Canada", "away": "Switzerland", "date": "2026-06-25 15:00"},
     # Group C
     {"id": "GC1", "group": "C", "home": "Brazil", "away": "Morocco", "date": "2026-06-12 18:00"},
     {"id": "GC2", "group": "C", "home": "Haiti", "away": "Scotland", "date": "2026-06-12 21:00"},

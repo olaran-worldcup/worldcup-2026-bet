@@ -41,6 +41,10 @@
 
         {% if is_submitted %}
         <div class="alert alert-success">Your vote is submitted and locked. No further changes allowed.</div>
+        {% elif is_resubmit %}
+        <div class="alert alert-info" style="background:#fff7ed; border-color:#fb923c; color:#9a3412;">
+            ⚠️ <strong>Update required:</strong> Some matches have been corrected. Please review your predictions and click <strong>Submit</strong> again to lock your updated vote.
+        </div>
         {% else %}
         <div class="alert alert-info">
             Fill in all predictions, then click <strong>Submit</strong> to lock your vote permanently.
@@ -280,18 +284,27 @@
             infoEl.innerHTML += '<br><span style="color:#dc2626; font-size:0.72rem;">⚠ Teams in red are tied — drag them to set final order</span>';
         }
 
-        // Always sort DOM items by the calculated standings order
-        // (this ensures tied teams are consecutive)
-        sorted.forEach(t => {
-            const item = listEl.querySelector(`.tb-item[data-team="${t.name}"]`);
-            if (item) {
-                item.dataset.pts = t.pts;
-                listEl.appendChild(item);
-            }
-        });
+        // Sort DOM items by calculated standings (only if user hasn't manually reordered)
+        const wasManuallyMoved = tbManuallyMoved.has(groupLetter);
+        if (!wasManuallyMoved) {
+            sorted.forEach(t => {
+                const item = listEl.querySelector(`.tb-item[data-team="${t.name}"]`);
+                if (item) {
+                    item.dataset.pts = t.pts;
+                    listEl.appendChild(item);
+                }
+            });
+        } else {
+            // Just update pts data without reordering
+            sorted.forEach(t => {
+                const item = listEl.querySelector(`.tb-item[data-team="${t.name}"]`);
+                if (item) {
+                    item.dataset.pts = t.pts;
+                }
+            });
+        }
 
         // Apply styling: tied = red + draggable, not tied = locked
-        const wasManuallyMoved = tbManuallyMoved.has(groupLetter);
         items.forEach(item => {
             const team = item.dataset.team;
             const isTied = tiedNames.has(team);
