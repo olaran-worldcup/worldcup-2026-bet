@@ -66,6 +66,20 @@
                 </div>
                 {% endif %}
                 {% endfor %}
+                <div class="tiebreaker-section" id="admin-tb-{{ group_letter }}">
+                    <div class="tiebreaker-title">Final standings — drag to set correct order for tied teams:</div>
+                    <div class="tiebreaker-info" id="admin-tb-info-{{ group_letter }}">Enter all group results first</div>
+                    <div class="tb-list admin-tb-list" id="admin-tb-list-{{ group_letter }}" data-group="{{ group_letter }}">
+                        {% for team in groups[group_letter] %}
+                        <div class="tb-item admin-tb-item" data-team="{{ team }}" data-group="{{ group_letter }}" draggable="true">
+                            <span class="tb-pos"></span>
+                            <img class="flag-icon" src="https://flagcdn.com/24x18/{{ flags.get(team, '') }}.png" alt="">
+                            <span class="tb-name">{{ team }}</span>
+                            <span class="tb-handle">⠿</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
             {% endfor %}
 
@@ -158,8 +172,10 @@
         return null;
     }
 
-    function getGroupWinner(groupLetter, position) {
-        // Calculate group standings from entered results
+    // Admin group standings — respects manual drag order
+    var adminGroupOrder = {}; // { 'A': ['Mexico', 'South Korea', ...], ... }
+
+    function calcAdminGroupStandings(groupLetter) {
         var teams = GROUPS[groupLetter];
         var matches = GROUP_MATCHES.filter(function(m) { return m.group === groupLetter; });
         var stats = {};
@@ -174,33 +190,193 @@
             else { stats[m.home].pts += 1; stats[m.away].pts += 1; }
         });
 
-        if (!allFilled) return null;
+        if (!allFilled) return { sorted: [], allFilled: false, stats: stats };
         var sorted = Object.values(stats).sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf; });
-        return sorted[position - 1] ? sorted[position - 1].name : null;
+        return { sorted: sorted, allFilled: true, stats: stats };
+    }
+
+    function updateAdminTiebreaker(groupLetter) {
+        var result = calcAdminGroupStandings(groupLetter);
+        var listEl = document.getElementById('admin-tb-list-' + groupLetter);
+        var infoEl = document.getElementById('admin-tb-info-' + groupLetter);
+        var items = listEl.querySelectorAll('.admin-tb-item');
+
+        if (!result.allFilled) {
+            infoEl.textContent = 'Enter all group results first';
+            items.forEach(function(item) { item.classList.remove('tied', 'resolved', 'locked'); item.style.opacity = '0.5'; });
+            return;
+        }
+
+        // If no manual order set yet, sort by calculated standings
+        if (!adminGroupOrder[groupLetter]) {
+            result.sorted.forEach(function(t) {
+                var item = listEl.querySelector('.admin-tb-item[data-team="' + t.name + '"]');
+                if (item) {
+                    item.dataset.pts = t.pts;
+                    listEl.appendChild(item);
+                }
+            });
+        } else {
+            // Just update pts
+            result.sorted.forEach(function(t) {
+                var item = listEl.querySelector('.admin-tb-item[data-team="' + t.name + '"]');
+                if (item) item.dataset.pts = t.pts;
+            });
+        }
+
+        // Find tied teams
+        var tiedNames = new Set();
+        var i = 0;
+        while (i < result.sorted.length) {
+            var j = i + 1;
+            while (j < result.sorted.length && result.sorted[j].pts === result.sorted[i].pts) j++;
+            if (j - i > 1) {
+                result.sorted.slice(i, j).forEach(function(t) { tiedNames.add(t.name); });
+            }
+            i = j;
+        }
+
+        // Show standings info
+        var html = result.sorted.map(function(t, idx) {
+            var style = tiedNames.has(t.name) ? 'color:#dc2626; font-weight:700;' : '';
+            return '<span style="' + style + '">' + (idx+1) + '. ' + flag(t.name) + ' ' + t.name + ' (' + t.pts + 'pts, GD' + (t.gd >= 0 ? '+' : '') + t.gd + ')</span>';
+        }).join(' | ');
+        infoEl.innerHTML = html;
+        if (tiedNames.size > 0) {
+            infoEl.innerHTML += '<br><span style="color:#dc2626; font-size:0.72rem;">⚠ Drag tied teams to set final order</span>';
+        }
+
+        // Style items
+        items.forEach(function(item) {
+            item.style.opacity = '1';
+            var isTied = tiedNames.has(item.dataset.team);
+            item.classList.remove('tied', 'resolved', 'locked');
+            if (isTied && !adminGroupOrder[groupLetter]) {
+                item.classList.add('tied');
+                item.setAttribute('draggable', 'true');
+            } else if (isTied && adminGroupOrder[groupLetter]) {
+                item.classList.add('resolved');
+                item.setAttribute('draggable', 'true');
+            } else {
+                item.classList.add('locked');
+                item.setAttribute('draggable', 'false');
+            }
+        });
+
+        // Update position numbers
+        listEl.querySelectorAll('.admin-tb-item').forEach(function(item, idx) {
+            item.querySelector('.tb-pos').textContent = (idx + 1) + '.';
+        });
+
+        // Save current order
+        saveAdminGroupOrder(groupLetter);
+    }
+
+    function saveAdminGroupOrder(groupLetter) {
+        var listEl = document.getElementById('admin-tb-list-' + groupLetter);
+        var order = Array.from(listEl.querySelectorAll('.admin-tb-item')).map(function(item) { return item.dataset.team; });
+        adminGroupOrder[groupLetter] = order;
+    }
+
+    function getAdminGroupPosition(groupLetter, position) {
+        if (adminGroupOrder[groupLetter] && adminGroupOrder[groupLetter].length === 4) {
+            return adminGroupOrder[groupLetter][position - 1];
+        }
+        // Fallback to calculated
+        var result = calcAdminGroupStandings(groupLetter);
+        if (result.allFilled && result.sorted[position - 1]) {
+            return result.sorted[position - 1].name;
+        }
+        return null;
+    }
+
+    // Admin drag and drop for tiebreakers
+    var adminDraggedItem = null;
+
+    document.querySelectorAll('.admin-tb-list').forEach(function(list) {
+        list.addEventListener('dragstart', function(e) {
+            if (e.target.classList.contains('admin-tb-item')) {
+                adminDraggedItem = e.target;
+                e.target.classList.add('dragging');
+            }
+        });
+
+        list.addEventListener('dragend', function(e) {
+            if (e.target.classList.contains('admin-tb-item')) {
+                e.target.classList.remove('dragging');
+                adminDraggedItem = null;
+                var groupLetter = list.dataset.group;
+                adminGroupOrder[groupLetter] = true; // mark as manually set
+                saveAdminGroupOrder(groupLetter);
+                // Update styling
+                list.querySelectorAll('.admin-tb-item.tied').forEach(function(item) {
+                    item.classList.remove('tied');
+                    item.classList.add('resolved');
+                });
+                list.querySelectorAll('.admin-tb-item').forEach(function(item, idx) {
+                    item.querySelector('.tb-pos').textContent = (idx + 1) + '.';
+                });
+                updateAdminKnockoutLabels();
+            }
+        });
+
+        list.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            if (!adminDraggedItem) return;
+            var allItems = Array.from(list.querySelectorAll('.admin-tb-item'));
+            var draggedPts = adminDraggedItem.dataset.pts;
+            if (!draggedPts) return;
+            var samePtsItems = allItems.filter(function(it) { return it.dataset.pts === draggedPts; });
+            if (samePtsItems.length < 2) return;
+
+            var firstIdx = allItems.indexOf(samePtsItems[0]);
+            var lastIdx = allItems.indexOf(samePtsItems[samePtsItems.length - 1]);
+
+            var afterElement = getAdminDragAfterElement(list, e.clientY);
+            if (afterElement == null) {
+                if (allItems[allItems.length - 1].dataset.pts === draggedPts) {
+                    list.appendChild(adminDraggedItem);
+                }
+            } else {
+                var afterIdx = allItems.indexOf(afterElement);
+                if (afterIdx >= firstIdx && afterIdx <= lastIdx + 1) {
+                    list.insertBefore(adminDraggedItem, afterElement);
+                }
+            }
+        });
+
+        list.addEventListener('drop', function(e) { e.preventDefault(); });
+    });
+
+    function getAdminDragAfterElement(container, y) {
+        var elements = Array.from(container.querySelectorAll('.admin-tb-item:not(.dragging)'));
+        return elements.reduce(function(closest, child) {
+            var box = child.getBoundingClientRect();
+            var offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            }
+            return closest;
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    function getGroupWinner(groupLetter, position) {
+        return getAdminGroupPosition(groupLetter, position);
     }
 
     function resolve3rdPlaceTeam(slotCode) {
-        // Get all 3rd-place teams from each group based on actual results
+        // Get all 3rd-place teams from each group based on admin's tiebreaker order
         var thirdTeams = [];
         var allGroupsFilled = true;
         ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
-            var teams = GROUPS[g];
-            var matches = GROUP_MATCHES.filter(function(m) { return m.group === g; });
-            var stats = {};
-            teams.forEach(function(t) { stats[t] = {pts: 0, gd: 0, gf: 0, name: t, group: g}; });
-
-            matches.forEach(function(m) {
-                var result = RESULTS[m.id];
-                if (!result) { allGroupsFilled = false; return; }
-                if (result === '1') { stats[m.home].pts += 3; stats[m.home].gd += 1; stats[m.home].gf += 1; stats[m.away].gd -= 1; }
-                else if (result === '2') { stats[m.away].pts += 3; stats[m.away].gd += 1; stats[m.away].gf += 1; stats[m.home].gd -= 1; }
-                else { stats[m.home].pts += 1; stats[m.away].pts += 1; }
-            });
-
-            if (!allGroupsFilled) return;
-            var sorted = Object.values(stats).sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf; });
-            if (sorted[2]) {
-                thirdTeams.push({ name: sorted[2].name, group: g, pts: sorted[2].pts, gd: sorted[2].gd });
+            var result = calcAdminGroupStandings(g);
+            if (!result.allFilled) { allGroupsFilled = false; return; }
+            var thirdName = getAdminGroupPosition(g, 3);
+            if (thirdName) {
+                var teamStats = result.sorted.find(function(t) { return t.name === thirdName; });
+                if (teamStats) {
+                    thirdTeams.push({ name: teamStats.name, group: g, pts: teamStats.pts, gd: teamStats.gd });
+                }
             }
         });
 
@@ -213,8 +389,6 @@
         var assignment = THIRD_PLACE_TABLE[comboKey];
         if (!assignment) return null;
 
-        // Map: which KO match gets which slot
-        // [faces_1A=0, faces_1B=1, faces_1D=2, faces_1E=3, faces_1G=4, faces_1I=5, faces_1K=6, faces_1L=7]
         var slotMap = {'1A': 0, '1B': 1, '1D': 2, '1E': 3, '1G': 4, '1I': 5, '1K': 6, '1L': 7};
         var koToWinner = {'KO79': '1A', 'KO85': '1B', 'KO81': '1D', 'KO74': '1E', 'KO82': '1G', 'KO77': '1I', 'KO87': '1K', 'KO80': '1L'};
 
@@ -224,7 +398,6 @@
                 var winnerSlot = koToWinner[koId];
                 var idx = slotMap[winnerSlot];
                 var assignedGroup = assignment[idx];
-                // Get 3rd-place team from that group
                 var team = thirdTeams.find(function(t) { return t.group === assignedGroup; });
                 return team ? team.name : null;
             }
@@ -268,6 +441,10 @@
         // Rebuild RESULTS from current button states
         document.querySelectorAll('.result-btn.selected').forEach(function(btn) {
             RESULTS[btn.dataset.match] = btn.dataset.value;
+        });
+        // Update all group tiebreakers
+        ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
+            updateAdminTiebreaker(g);
         });
         updateAdminKnockoutLabels();
     }
@@ -350,7 +527,10 @@
         dlLink.textContent = '📥 Download ' + phase.charAt(0).toUpperCase() + phase.slice(1) + ' Report (CSV)';
         dlDiv.style.display = 'block';
     }
-    // Initialize knockout labels on page load
+    // Initialize knockout labels and tiebreakers on page load
+    ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
+        updateAdminTiebreaker(g);
+    });
     updateAdminKnockoutLabels();
     </script>
 </body>
