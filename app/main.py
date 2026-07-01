@@ -448,7 +448,7 @@ def download_report(phase):
 
 @app.route('/admin/download/bet/<login>')
 def download_bet(login):
-    """Download a user's submitted vote as CSV."""
+    """Download a user's submitted vote as CSV with resolved team names."""
     if 'user_id' not in session or not session.get('is_admin'):
         return jsonify({'error': 'Admin access required'}), 403
 
@@ -467,24 +467,117 @@ def download_bet(login):
         return jsonify({'error': 'Vote not found'}), 404
 
     bet_data = json.loads(row['bet_data'])
-    matches = bet_data.get('matches', {})
+    user_matches = bet_data.get('matches', {})
     awards = bet_data.get('awards', {})
+
+    # Build a resolver for this user's predictions
+    def resolve_team(code):
+        """Resolve a bracket code to a team name based on user's predictions."""
+        if not code:
+            return code
+        # Direct team name
+        if code in FLAGS:
+            return code
+        # Group position: "1A", "2B"
+        import re
+        pos_match = re.match(r'^([12])([A-L])$', code)
+        if pos_match:
+            pos = int(pos_match.group(1))
+            group = pos_match.group(2)
+            return _calc_group_position(group, pos, user_matches)
+        # 3rd place codes
+        if code.startswith('3'):
+            return code  # Too complex to resolve without full bracket, keep code
+        # Winner/Loser of previous match
+        win_match = re.match(r'^W(\d+)$', code)
+        if win_match:
+            match_num = int(win_match.group(1))
+            return _get_user_match_winner(match_num, user_matches)
+        lose_match = re.match(r'^L(\d+)$', code)
+        if lose_match:
+            match_num = int(lose_match.group(1))
+            return _get_user_match_loser(match_num, user_matches)
+        return code
+
+    def _calc_group_position(group_letter, position, user_preds):
+        """Calculate group standings from user's predictions."""
+        teams = GROUPS[group_letter]
+        stats = {t: {'pts': 0, 'gd': 0, 'gf': 0, 'name': t} for t in teams}
+        for m in ALL_GROUP_MATCHES:
+            if m['group'] != group_letter:
+                continue
+            pred = user_preds.get(m['id'])
+            if not pred:
+                continue
+            if pred == '1':
+                stats[m['home']]['pts'] += 3; stats[m['home']]['gd'] += 1; stats[m['home']]['gf'] += 1; stats[m['away']]['gd'] -= 1
+            elif pred == '2':
+                stats[m['away']]['pts'] += 3; stats[m['away']]['gd'] += 1; stats[m['away']]['gf'] += 1; stats[m['home']]['gd'] -= 1
+            else:
+                stats[m['home']]['pts'] += 1; stats[m['away']]['pts'] += 1
+        sorted_teams = sorted(stats.values(), key=lambda x: (x['pts'], x['gd'], x['gf']), reverse=True)
+        if position <= len(sorted_teams):
+            return sorted_teams[position - 1]['name']
+        return None
+
+    def _get_user_match_winner(match_num, user_preds):
+        """Get the winner of a knockout match based on user's prediction."""
+        match = next((m for m in KNOCKOUT_MATCHES if m['match_num'] == match_num), None)
+        if not match:
+            return None
+        pred = user_preds.get(match['id'])
+        if not pred:
+            return None
+        winner_code = match['home'] if pred == '1' else match['away']
+        return resolve_team(winner_code)
+
+    def _get_user_match_loser(match_num, user_preds):
+        """Get the loser of a knockout match based on user's prediction."""
+        match = next((m for m in KNOCKOUT_MATCHES if m['match_num'] == match_num), None)
+        if not match:
+            return None
+        pred = user_preds.get(match['id'])
+        if not pred:
+            return None
+        loser_code = match['away'] if pred == '1' else match['home']
+        return resolve_team(loser_code)
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['Player', row['display_name']])
     writer.writerow(['Submitted', row['submitted_at']])
     writer.writerow([])
-    writer.writerow(['Match ID', 'Home', 'Away', 'Prediction'])
 
+    # Group matches
+    writer.writerow(['Match ID', 'Home', 'Away', 'Prediction', 'Winner'])
     for m in ALL_GROUP_MATCHES:
-        pred = matches.get(m['id'], '')
-        writer.writerow([m['id'], m['home'], m['away'], pred])
+        pred = user_matches.get(m['id'], '')
+        if pred == '1':
+            winner = m['home']
+        elif pred == '2':
+            winner = m['away']
+        elif pred == 'X':
+            winner = 'Draw'
+        else:
+            winner = ''
+        writer.writerow([m['id'], m['home'], m['away'], pred, winner])
 
+    # Knockout matches — resolve team names
+    writer.writerow([])
+    writer.writerow(['Match ID', 'Phase', 'Home', 'Away', 'Prediction', 'Advances'])
     for m in KNOCKOUT_MATCHES:
-        pred = matches.get(m['id'], '')
-        writer.writerow([m['id'], m['home'], m['away'], pred])
+        pred = user_matches.get(m['id'], '')
+        home_name = resolve_team(m['home']) or m['home']
+        away_name = resolve_team(m['away']) or m['away']
+        if pred == '1':
+            advances = home_name
+        elif pred == '2':
+            advances = away_name
+        else:
+            advances = ''
+        writer.writerow([m['id'], m['phase'], home_name, away_name, pred, advances])
 
+    # Awards
     writer.writerow([])
     writer.writerow(['Award', 'Prediction'])
     for key in ['golden_ball', 'golden_boot', 'golden_glove']:
