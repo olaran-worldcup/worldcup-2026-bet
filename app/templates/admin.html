@@ -77,12 +77,12 @@
                 {% for match in knockout_matches %}
                 {% if match.phase == phase_id %}
                 <div class="match-row">
-                    <div class="match-home">{{ match.home }}</div>
+                    <div class="match-home ko-admin-label" id="admin-home-{{ match.id }}" data-code="{{ match.home }}">{{ match.home }}</div>
                     <div class="match-bet">
                         <button class="result-btn bet-btn {% if results.get(match.id) == '1' %}selected{% endif %}" data-match="{{ match.id }}" data-value="1">1</button>
                         <button class="result-btn bet-btn {% if results.get(match.id) == '2' %}selected{% endif %}" data-match="{{ match.id }}" data-value="2">2</button>
                     </div>
-                    <div class="match-away">{{ match.away }}</div>
+                    <div class="match-away ko-admin-label" id="admin-away-{{ match.id }}" data-code="{{ match.away }}">{{ match.away }}</div>
                 </div>
                 {% endif %}
                 {% endfor %}
@@ -118,6 +118,104 @@
     </div>
 
     <script>
+    // Data for team resolution
+    var GROUPS = {{ groups | tojson }};
+    var GROUP_MATCHES = {{ group_matches | tojson }};
+    var KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
+    var FLAGS = {{ flags | tojson }};
+    var RESULTS = {{ results | tojson }};
+
+    function flag(name) { var code = FLAGS[name]; return code ? '<img class="flag-icon" src="https://flagcdn.com/24x18/' + code + '.png" alt="">' : ''; }
+
+    // Resolve knockout team names based on actual results entered by admin
+    function resolveAdminTeam(code) {
+        if (!code) return null;
+        // Direct team name
+        if (FLAGS[code]) return code;
+        // Group position: "1A", "2B"
+        var posMatch = code.match(/^([12])([A-L])$/);
+        if (posMatch) {
+            var pos = parseInt(posMatch[1]);
+            var group = posMatch[2];
+            return getGroupWinner(group, pos);
+        }
+        // 3rd place codes like "3ABCDF" — can't resolve without full bracket logic, show code
+        if (code.startsWith('3')) return null;
+        // Winner/Loser of previous match: "W73", "L101"
+        var winMatch = code.match(/^W(\d+)$/);
+        if (winMatch) {
+            var matchNum = parseInt(winMatch[1]);
+            return getMatchWinner(matchNum);
+        }
+        var loseMatch = code.match(/^L(\d+)$/);
+        if (loseMatch) {
+            var matchNum = parseInt(loseMatch[1]);
+            return getMatchLoser(matchNum);
+        }
+        return null;
+    }
+
+    function getGroupWinner(groupLetter, position) {
+        // Calculate group standings from entered results
+        var teams = GROUPS[groupLetter];
+        var matches = GROUP_MATCHES.filter(function(m) { return m.group === groupLetter; });
+        var stats = {};
+        teams.forEach(function(t) { stats[t] = {pts: 0, gd: 0, gf: 0, name: t}; });
+
+        var allFilled = true;
+        matches.forEach(function(m) {
+            var result = RESULTS[m.id];
+            if (!result) { allFilled = false; return; }
+            if (result === '1') { stats[m.home].pts += 3; stats[m.home].gd += 1; stats[m.home].gf += 1; stats[m.away].gd -= 1; }
+            else if (result === '2') { stats[m.away].pts += 3; stats[m.away].gd += 1; stats[m.away].gf += 1; stats[m.home].gd -= 1; }
+            else { stats[m.home].pts += 1; stats[m.away].pts += 1; }
+        });
+
+        if (!allFilled) return null;
+        var sorted = Object.values(stats).sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf; });
+        return sorted[position - 1] ? sorted[position - 1].name : null;
+    }
+
+    function getMatchWinner(matchNum) {
+        var match = KNOCKOUT_MATCHES.find(function(m) { return m.match_num === matchNum; });
+        if (!match) return null;
+        var result = RESULTS[match.id];
+        if (!result) return null;
+        var winnerCode = result === '1' ? match.home : match.away;
+        // Recursively resolve the winner's code to a team name
+        return resolveAdminTeam(winnerCode);
+    }
+
+    function getMatchLoser(matchNum) {
+        var match = KNOCKOUT_MATCHES.find(function(m) { return m.match_num === matchNum; });
+        if (!match) return null;
+        var result = RESULTS[match.id];
+        if (!result) return null;
+        var loserCode = result === '1' ? match.away : match.home;
+        return resolveAdminTeam(loserCode);
+    }
+
+    function updateAdminKnockoutLabels() {
+        document.querySelectorAll('.ko-admin-label').forEach(function(el) {
+            var code = el.dataset.code;
+            var teamName = resolveAdminTeam(code);
+            if (teamName) {
+                el.innerHTML = flag(teamName) + ' ' + teamName;
+            } else {
+                el.textContent = code;
+            }
+        });
+    }
+
+    // Update knockout labels when a result is entered
+    function onResultEntered() {
+        // Rebuild RESULTS from current button states
+        document.querySelectorAll('.result-btn.selected').forEach(function(btn) {
+            RESULTS[btn.dataset.match] = btn.dataset.value;
+        });
+        updateAdminKnockoutLabels();
+    }
+
     function showTab(tab) {
         document.querySelectorAll('.admin-panel').forEach(p => p.style.display = 'none');
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -145,6 +243,7 @@
                 body: JSON.stringify({match_id: matchId, result: value})
             });
             showAlert(resp.ok ? 'Saved' : 'Error', resp.ok ? 'success' : 'error');
+            onResultEntered();
         });
     });
 
@@ -195,6 +294,8 @@
         dlLink.textContent = '📥 Download ' + phase.charAt(0).toUpperCase() + phase.slice(1) + ' Report (CSV)';
         dlDiv.style.display = 'block';
     }
+    // Initialize knockout labels on page load
+    updateAdminKnockoutLabels();
     </script>
 </body>
 </html>
