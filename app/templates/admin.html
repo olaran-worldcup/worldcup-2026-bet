@@ -124,6 +124,7 @@
     var KNOCKOUT_MATCHES = {{ knockout_matches | tojson }};
     var FLAGS = {{ flags | tojson }};
     var RESULTS = {{ results | tojson }};
+    var THIRD_PLACE_TABLE = {{ third_place_table | tojson }};
 
     function flag(name) { var code = FLAGS[name]; return code ? '<img class="flag-icon" src="https://flagcdn.com/24x18/' + code + '.png" alt="">' : ''; }
 
@@ -139,8 +140,10 @@
             var group = posMatch[2];
             return getGroupWinner(group, pos);
         }
-        // 3rd place codes like "3ABCDF" — can't resolve without full bracket logic, show code
-        if (code.startsWith('3')) return null;
+        // 3rd place codes like "3ABCDF"
+        if (code.startsWith('3')) {
+            return resolve3rdPlaceTeam(code);
+        }
         // Winner/Loser of previous match: "W73", "L101"
         var winMatch = code.match(/^W(\d+)$/);
         if (winMatch) {
@@ -174,6 +177,59 @@
         if (!allFilled) return null;
         var sorted = Object.values(stats).sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf; });
         return sorted[position - 1] ? sorted[position - 1].name : null;
+    }
+
+    function resolve3rdPlaceTeam(slotCode) {
+        // Get all 3rd-place teams from each group based on actual results
+        var thirdTeams = [];
+        var allGroupsFilled = true;
+        ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
+            var teams = GROUPS[g];
+            var matches = GROUP_MATCHES.filter(function(m) { return m.group === g; });
+            var stats = {};
+            teams.forEach(function(t) { stats[t] = {pts: 0, gd: 0, gf: 0, name: t, group: g}; });
+
+            matches.forEach(function(m) {
+                var result = RESULTS[m.id];
+                if (!result) { allGroupsFilled = false; return; }
+                if (result === '1') { stats[m.home].pts += 3; stats[m.home].gd += 1; stats[m.home].gf += 1; stats[m.away].gd -= 1; }
+                else if (result === '2') { stats[m.away].pts += 3; stats[m.away].gd += 1; stats[m.away].gf += 1; stats[m.home].gd -= 1; }
+                else { stats[m.home].pts += 1; stats[m.away].pts += 1; }
+            });
+
+            if (!allGroupsFilled) return;
+            var sorted = Object.values(stats).sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd || b.gf - a.gf; });
+            if (sorted[2]) {
+                thirdTeams.push({ name: sorted[2].name, group: g, pts: sorted[2].pts, gd: sorted[2].gd });
+            }
+        });
+
+        if (!allGroupsFilled || thirdTeams.length < 12) return null;
+
+        // Sort 3rd-place teams and take top 8
+        thirdTeams.sort(function(a, b) { return b.pts - a.pts || b.gd - a.gd; });
+        var qualifiedGroups = thirdTeams.slice(0, 8).map(function(t) { return t.group; });
+        var comboKey = qualifiedGroups.slice().sort().join('');
+        var assignment = THIRD_PLACE_TABLE[comboKey];
+        if (!assignment) return null;
+
+        // Map: which KO match gets which slot
+        // [faces_1A=0, faces_1B=1, faces_1D=2, faces_1E=3, faces_1G=4, faces_1I=5, faces_1K=6, faces_1L=7]
+        var slotMap = {'1A': 0, '1B': 1, '1D': 2, '1E': 3, '1G': 4, '1I': 5, '1K': 6, '1L': 7};
+        var koToWinner = {'KO79': '1A', 'KO85': '1B', 'KO81': '1D', 'KO74': '1E', 'KO82': '1G', 'KO77': '1I', 'KO87': '1K', 'KO80': '1L'};
+
+        for (var koId in koToWinner) {
+            var match = KNOCKOUT_MATCHES.find(function(m) { return m.id === koId; });
+            if (match && match.away === slotCode) {
+                var winnerSlot = koToWinner[koId];
+                var idx = slotMap[winnerSlot];
+                var assignedGroup = assignment[idx];
+                // Get 3rd-place team from that group
+                var team = thirdTeams.find(function(t) { return t.group === assignedGroup; });
+                return team ? team.name : null;
+            }
+        }
+        return null;
     }
 
     function getMatchWinner(matchNum) {

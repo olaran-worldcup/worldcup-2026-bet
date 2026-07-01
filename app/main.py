@@ -225,7 +225,8 @@ def admin_panel():
                            group_matches=ALL_GROUP_MATCHES,
                            knockout_matches=KNOCKOUT_MATCHES,
                            teams=TEAMS,
-                           flags=FLAGS)
+                           flags=FLAGS,
+                           third_place_table=THIRD_PLACE_TABLE)
 
 
 @app.route('/admin/enter_result', methods=['POST'])
