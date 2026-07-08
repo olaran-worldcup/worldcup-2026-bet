@@ -276,6 +276,12 @@
         var listEl = document.getElementById('admin-tb-list-' + groupLetter);
         var order = Array.from(listEl.querySelectorAll('.admin-tb-item')).map(function(item) { return item.dataset.team; });
         adminGroupOrder[groupLetter] = order;
+        // Persist to server
+        fetch('/admin/enter_result', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({match_id: 'tiebreaker_' + groupLetter, result: order.join(',')})
+        });
     }
 
     function getAdminGroupPosition(groupLetter, position) {
@@ -527,6 +533,21 @@
         dlLink.textContent = '📥 Download ' + phase.charAt(0).toUpperCase() + phase.slice(1) + ' Report (CSV)';
         dlDiv.style.display = 'block';
     }
+    // Initialize: restore saved tiebreaker orders from RESULTS
+    ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
+        var saved = RESULTS['tiebreaker_' + g];
+        if (saved) {
+            var order = saved.split(',');
+            adminGroupOrder[g] = order;
+            // Reorder DOM items to match saved order
+            var listEl = document.getElementById('admin-tb-list-' + g);
+            order.forEach(function(teamName) {
+                var item = listEl.querySelector('.admin-tb-item[data-team="' + teamName + '"]');
+                if (item) listEl.appendChild(item);
+            });
+        }
+    });
+
     // Initialize knockout labels and tiebreakers on page load
     ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(function(g) {
         updateAdminTiebreaker(g);

@@ -241,7 +241,7 @@ def enter_result():
     if not match_id or not result:
         return jsonify({'error': 'Invalid data'}), 400
 
-    if not match_id.startswith('award_'):
+    if not match_id.startswith('award_') and not match_id.startswith('tiebreaker_'):
         if result not in ['1', 'X', '2']:
             return jsonify({'error': 'Invalid result value'}), 400
 
