@@ -303,24 +303,166 @@ POINTS_MAP = {
 }
 
 
+def _resolve_user_ko_winner(match, user_matches):
+    """Resolve which team a user predicted to advance in a knockout match."""
+    pred = user_matches.get(match['id'])
+    if not pred:
+        return None
+    winner_code = match['home'] if pred == '1' else match['away']
+    return _resolve_team_from_user(winner_code, user_matches)
+
+
+def _resolve_team_from_user(code, user_matches):
+    """Recursively resolve a bracket code to a team name based on user's predictions."""
+    if not code:
+        return None
+    if code in FLAGS:
+        return code
+    import re
+    # Group position: "1A", "2B"
+    pos_match = re.match(r'^([12])([A-L])$', code)
+    if pos_match:
+        pos = int(pos_match.group(1))
+        group = pos_match.group(2)
+        return _calc_group_position_from_user(group, pos, user_matches)
+    # 3rd place — too complex, skip
+    if code.startswith('3'):
+        return None
+    # Winner of previous match
+    win_match = re.match(r'^W(\d+)$', code)
+    if win_match:
+        match_num = int(win_match.group(1))
+        m = next((x for x in KNOCKOUT_MATCHES if x['match_num'] == match_num), None)
+        if m:
+            return _resolve_user_ko_winner(m, user_matches)
+    # Loser of previous match
+    lose_match = re.match(r'^L(\d+)$', code)
+    if lose_match:
+        match_num = int(lose_match.group(1))
+        m = next((x for x in KNOCKOUT_MATCHES if x['match_num'] == match_num), None)
+        if m:
+            pred = user_matches.get(m['id'])
+            if not pred:
+                return None
+            loser_code = m['away'] if pred == '1' else m['home']
+            return _resolve_team_from_user(loser_code, user_matches)
+    return None
+
+
+def _calc_group_position_from_user(group_letter, position, user_matches):
+    """Calculate group standings from a user's predictions."""
+    teams = GROUPS[group_letter]
+    stats = {t: {'pts': 0, 'gd': 0, 'gf': 0, 'name': t} for t in teams}
+    for m in ALL_GROUP_MATCHES:
+        if m['group'] != group_letter:
+            continue
+        pred = user_matches.get(m['id'])
+        if not pred:
+            continue
+        if pred == '1':
+            stats[m['home']]['pts'] += 3; stats[m['home']]['gd'] += 1; stats[m['home']]['gf'] += 1; stats[m['away']]['gd'] -= 1
+        elif pred == '2':
+            stats[m['away']]['pts'] += 3; stats[m['away']]['gd'] += 1; stats[m['away']]['gf'] += 1; stats[m['home']]['gd'] -= 1
+        else:
+            stats[m['home']]['pts'] += 1; stats[m['away']]['pts'] += 1
+    sorted_teams = sorted(stats.values(), key=lambda x: (x['pts'], x['gd'], x['gf']), reverse=True)
+    if position <= len(sorted_teams):
+        return sorted_teams[position - 1]['name']
+    return None
+
+
+def _resolve_actual_ko_winner(match, results_dict):
+    """Resolve which team actually advanced in a knockout match based on admin results."""
+    result = results_dict.get(match['id'])
+    if not result:
+        return None
+    winner_code = match['home'] if result == '1' else match['away']
+    return _resolve_team_from_admin(winner_code, results_dict)
+
+
+def _resolve_team_from_admin(code, results_dict):
+    """Recursively resolve a bracket code to a team name based on admin results."""
+    if not code:
+        return None
+    if code in FLAGS:
+        return code
+    import re
+    pos_match = re.match(r'^([12])([A-L])$', code)
+    if pos_match:
+        pos = int(pos_match.group(1))
+        group = pos_match.group(2)
+        # Use admin results for group standings
+        teams = GROUPS[group]
+        stats = {t: {'pts': 0, 'gd': 0, 'gf': 0, 'name': t} for t in teams}
+        for m in ALL_GROUP_MATCHES:
+            if m['group'] != group:
+                continue
+            r = results_dict.get(m['id'])
+            if not r:
+                continue
+            if r == '1':
+                stats[m['home']]['pts'] += 3; stats[m['home']]['gd'] += 1; stats[m['home']]['gf'] += 1; stats[m['away']]['gd'] -= 1
+            elif r == '2':
+                stats[m['away']]['pts'] += 3; stats[m['away']]['gd'] += 1; stats[m['away']]['gf'] += 1; stats[m['home']]['gd'] -= 1
+            else:
+                stats[m['home']]['pts'] += 1; stats[m['away']]['pts'] += 1
+        # Check if admin set a tiebreaker order
+        tb_key = f'tiebreaker_{group}'
+        if tb_key in results_dict:
+            order = results_dict[tb_key].split(',')
+            if len(order) == 4 and pos <= 4:
+                return order[pos - 1]
+        sorted_teams = sorted(stats.values(), key=lambda x: (x['pts'], x['gd'], x['gf']), reverse=True)
+        if pos <= len(sorted_teams):
+            return sorted_teams[pos - 1]['name']
+        return None
+    if code.startswith('3'):
+        return None  # 3rd place resolution too complex for scoring
+    win_match = re.match(r'^W(\d+)$', code)
+    if win_match:
+        match_num = int(win_match.group(1))
+        m = next((x for x in KNOCKOUT_MATCHES if x['match_num'] == match_num), None)
+        if m:
+            return _resolve_actual_ko_winner(m, results_dict)
+    lose_match = re.match(r'^L(\d+)$', code)
+    if lose_match:
+        match_num = int(lose_match.group(1))
+        m = next((x for x in KNOCKOUT_MATCHES if x['match_num'] == match_num), None)
+        if m:
+            result = results_dict.get(m['id'])
+            if not result:
+                return None
+            loser_code = m['away'] if result == '1' else m['home']
+            return _resolve_team_from_admin(loser_code, results_dict)
+    return None
+
+
 def _calc_scores_for_phase(phase, bets, results_dict):
     """Calculate scores for a given phase."""
     match_list = []
     if phase == 'group':
-        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
+        match_list = [(m['id'], POINTS_MAP['group'], 'group') for m in ALL_GROUP_MATCHES]
     elif phase == 'R32':
-        match_list = [(m['id'], POINTS_MAP['R32']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R32']
+        match_list = [(m['id'], POINTS_MAP['R32'], 'ko') for m in KNOCKOUT_MATCHES if m['phase'] == 'R32']
     elif phase == 'R16':
-        match_list = [(m['id'], POINTS_MAP['R16']) for m in KNOCKOUT_MATCHES if m['phase'] == 'R16']
+        match_list = [(m['id'], POINTS_MAP['R16'], 'ko') for m in KNOCKOUT_MATCHES if m['phase'] == 'R16']
     elif phase == 'QF':
-        match_list = [(m['id'], POINTS_MAP['QF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'QF']
+        match_list = [(m['id'], POINTS_MAP['QF'], 'ko') for m in KNOCKOUT_MATCHES if m['phase'] == 'QF']
     elif phase == 'SF':
-        match_list = [(m['id'], POINTS_MAP['SF']) for m in KNOCKOUT_MATCHES if m['phase'] == 'SF']
+        match_list = [(m['id'], POINTS_MAP['SF'], 'ko') for m in KNOCKOUT_MATCHES if m['phase'] == 'SF']
     elif phase == 'Final':
-        match_list = [(m['id'], POINTS_MAP.get(m['phase'], 5)) for m in KNOCKOUT_MATCHES if m['phase'] in ['Final', '3rd']]
+        match_list = [(m['id'], POINTS_MAP.get(m['phase'], 5), 'ko') for m in KNOCKOUT_MATCHES if m['phase'] in ['Final', '3rd']]
     else:
-        match_list = [(m['id'], POINTS_MAP['group']) for m in ALL_GROUP_MATCHES]
-        match_list += [(m['id'], POINTS_MAP.get(m['phase'], 1)) for m in KNOCKOUT_MATCHES]
+        match_list = [(m['id'], POINTS_MAP['group'], 'group') for m in ALL_GROUP_MATCHES]
+        match_list += [(m['id'], POINTS_MAP.get(m['phase'], 1), 'ko') for m in KNOCKOUT_MATCHES]
+
+    # Pre-resolve actual KO winners from admin results
+    actual_ko_winners = {}
+    for m in KNOCKOUT_MATCHES:
+        if m['id'] in results_dict:
+            winner = _resolve_actual_ko_winner(m, results_dict)
+            if winner:
+                actual_ko_winners[m['id']] = winner
 
     scores = []
     for bet_row in bets:
@@ -330,12 +472,28 @@ def _calc_scores_for_phase(phase, bets, results_dict):
         correct = 0
         total = 0
 
-        for mid, weight in match_list:
-            if mid in results_dict:
-                total += 1
+        for mid, weight, match_type in match_list:
+            if mid not in results_dict:
+                continue
+            total += 1
+
+            if match_type == 'group':
+                # Group: simple 1/X/2 comparison
                 if mid in user_matches and user_matches[mid] == results_dict[mid]:
                     points += weight
                     correct += 1
+            else:
+                # Knockout: compare which TEAM advances
+                actual_winner = actual_ko_winners.get(mid)
+                if not actual_winner:
+                    continue
+                # Resolve user's predicted winner for this match
+                ko_match = next((m for m in KNOCKOUT_MATCHES if m['id'] == mid), None)
+                if ko_match:
+                    user_winner = _resolve_user_ko_winner(ko_match, user_matches)
+                    if user_winner and user_winner == actual_winner:
+                        points += weight
+                        correct += 1
 
         awards_correct = 0
         if phase in ('all', 'Final', 'general'):
